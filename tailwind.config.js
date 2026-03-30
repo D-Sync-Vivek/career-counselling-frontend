@@ -7,8 +7,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // Sets Comico as the primary sans font for Tailwind
-        sans: ['"Comico"', 'system-ui', 'sans-serif'], 
+        // 👉 This line is what makes Satoshi appear everywhere automatically!
+        sans: ['"Satoshi"', 'sans-serif'], 
       },
     },
   },

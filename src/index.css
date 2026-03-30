@@ -1,11 +1,19 @@
-/* src/index.css */
-
-/* 1. Load the Comico font from your public folder */
+/* 1. Load the Satoshi Regular weight */
 @font-face {
-  font-family: 'Comico';
-  /* Make sure this perfectly matches the name of the file you downloaded! */
-  src: url('/fonts/Comico-Regular.woff2') format('woff2'); 
-  font-weight: normal;
+  font-family: 'Satoshi';
+  /* 👉 Matches your EXACT file name in the folder! */
+  src: url('/fonts/Satoshi-Regular.woff2') format('woff2'); 
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 2. Load the Satoshi Bold weight */
+@font-face {
+  font-family: 'Satoshi';
+  /* 👉 Matches your EXACT file name in the folder! */
+  src: url('/fonts/Satoshi-Bold.woff2') format('woff2'); 
+  font-weight: 700; 
   font-style: normal;
   font-display: swap;
 }
@@ -18,38 +26,31 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    scroll-behavior: smooth;
   }
   
   body {
     @apply bg-slate-50 text-slate-900;
-    /* 2. Force Comico as the global default font */
-    font-family: 'Comico', system-ui, sans-serif; 
+    font-family: 'Satoshi', sans-serif !important; 
   }
 
-  /* Optional: Adjust heading line-heights since marker fonts can be tall */
-  h1, h2, h3, h4, h5, h6 {
+  h1, h2, h3, h4, h5, h6, p, span, button, a {
+    font-family: 'Satoshi', sans-serif !important; 
+  }
+
+  /* Satoshi headings look best slightly tightened */
+  h1, h2, h3, h4 {
     line-height: 1.1 !important;
+    letter-spacing: -0.03em !important; 
   }
 }
 
 @layer utilities {
-  /* 3. Your Global Cloud Float Animations */
   @keyframes float {
     0% { transform: translateY(0px); }
     50% { transform: translateY(-25px); }
     100% { transform: translateY(0px); }
   }
-  
-  .animate-float-fast {
-    animation: float 6s ease-in-out infinite;
-  }
-  
-  .animate-float-slow {
-    animation: float 9s ease-in-out infinite;
-  }
-  
-  .animate-float-slower {
-    animation: float 14s ease-in-out infinite;
-  }
+  .animate-float-fast { animation: float 6s ease-in-out infinite; }
+  .animate-float-slow { animation: float 9s ease-in-out infinite; }
+  .animate-float-slower { animation: float 14s ease-in-out infinite; }
 }

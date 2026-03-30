@@ -189,7 +189,6 @@ export default function ProfileCreation() {
       setLoadingStep(false);
     }
   }
-
   function handleAnswer(key, val) {
     setAnswers(prev => ({ ...prev, [key]: val }));
     

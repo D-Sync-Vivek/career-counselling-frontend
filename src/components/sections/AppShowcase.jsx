@@ -25,7 +25,12 @@ export default function AppShowcase() {
   const y = useTransform(scrollYProgress, [0, 0.8], [80, 0]);
 
   return (
-    <section ref={containerRef} className="relative h-[120vh] w-full z-20">
+    // 👉 ADDED style={{ position: 'relative' }} right here to fix the console warning!
+    <section 
+      ref={containerRef} 
+      className="relative h-[120vh] w-full z-20"
+      style={{ position: 'relative' }} 
+    >
       
       <div className="sticky top-0 h-screen w-full flex items-center justify-center overflow-hidden px-6 lg:px-12 pointer-events-none">
         
