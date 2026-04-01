@@ -4,6 +4,7 @@ import { Mail, Lock, User, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import CloudBackground from '../components/layout/CloudBackground';
 import { loginUser } from '../services/api/authApi';
+import { clearUserSession } from '../utils/jwt';
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -19,6 +20,8 @@ export default function SignIn() {
     try {
       const res = await loginUser({ email, password });
 
+      // Wipe any previous user's harmony_* data before storing the new session
+      clearUserSession();
       localStorage.setItem("token", res.token);
       localStorage.setItem("role", res.role);
       if (res.userId) localStorage.setItem("userId", res.userId);

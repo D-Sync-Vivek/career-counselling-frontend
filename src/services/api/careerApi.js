@@ -1,29 +1,59 @@
 import { apiClient } from "./apiClient";
 
+// ── ROADMAP ENDPOINTS ────────────────────────────────────────────────────────
+
 /**
- * GET /api/v1/career/roadmap  (requires auth)
- * Resolves career goal in priority order:
- *   1. `career` query param  ← always send this
- *   2. aspiration_data.dream_career from DB
- *   3. Fallback: "Software Engineer"
- *
- * Returns CareerRoadmapResponse:
- *   { career_title, student_level, difficulty_level, total_duration, daily_commitment,
- *     phases[{ phase_number, phase_title, description, importance, duration_weeks,
- *              skills_targeted[], weekly_breakdown[{ week_number, topic, tasks[], resources[] }],
- *              milestone_project, success_criteria }],
- *     mentor_adjustments, parent_adjustments }
+ * GET /api/v1/roadmaps/generate
+ * Automatically pulls student data from DB and generates the roadmap.
  */
-export const getCareerRoadmap = (careerTitle, adjustmentNote) => {
+export const getCareerRoadmap = (careerTitle) => {
+  // We dropped 'notes' because the Python backend pulls it directly from Postgres now!
   const qs = new URLSearchParams();
   if (careerTitle) qs.set('career', careerTitle);
-  if (adjustmentNote) qs.set('notes', adjustmentNote);
   const params = qs.toString() ? `?${qs.toString()}` : '';
-  return apiClient.get(`/api/v1/career/roadmap${params}`);
+  
+  // Notice the updated URL path:
+  return apiClient.get(`/api/v1/roadmaps/generate${params}`);
 };
 
 /**
- * POST /api/v1/ai/recommend  (requires auth)
+ * POST /api/v1/roadmaps/save
+ * Saves the generated roadmap to the database.
+ */
+export const saveRoadmap = (roadmapData) => {
+  return apiClient.post("/api/v1/roadmaps/save", roadmapData);
+};
+
+/**
+ * GET /api/v1/roadmaps/current
+ * Fetches the student's active roadmap from the database.
+ */
+export const getActiveRoadmap = () => {
+  return apiClient.get("/api/v1/roadmaps/current");
+};
+
+/**
+ * POST /api/v1/roadmaps/start
+ * Updates roadmap status to Active.
+ */
+export const startRoadmap = () => {
+  return apiClient.post("/api/v1/roadmaps/start", {});
+};
+
+/**
+ * PATCH /api/v1/roadmaps/tasks/{task_id}/complete
+ * Toggles a specific task as complete/incomplete.
+ */
+export const toggleTaskComplete = (taskId) => {
+  return apiClient.patch(`/api/v1/roadmaps/tasks/${taskId}/complete`, {});
+};
+
+// ── AI RECOMMENDATIONS ───────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/ai/recommend
  * Returns: { brutal_truth_summary, top_5_careers[{ title, rationale }] }
  */
-export const getAIRecommendations = () => apiClient.post("/api/v1/ai/recommend", {});
+export const getAIRecommendations = () => {
+  return apiClient.post("/api/v1/ai/recommend", {});
+};

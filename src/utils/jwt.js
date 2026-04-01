@@ -20,11 +20,43 @@ export function getCurrentUser() {
   };
 }
 
+function emailToFirstName(email) {
+  return (
+    email.split('@')[0].split('.')[0].replace(/\d+/g, '').replace(/^./, c => c.toUpperCase()) ||
+    'there'
+  );
+}
+
 export function getUserDisplayName() {
-  const stored = localStorage.getItem('harmony_profile_name');
-  if (stored) return stored;
   const user = getCurrentUser();
   if (!user) return 'there';
-  // Format email into a name: "alex.johnson@..." → "Alex"
-  return user.email.split('@')[0].split('.')[0].replace(/\d+/g, '').replace(/^./, c => c.toUpperCase()) || 'there';
+
+  // Only students may use harmony_profile_name — and only if it belongs to
+  // the currently-logged-in user (keyed by userId to prevent cross-user leak).
+  if (user.role === 'student') {
+    const storedId = localStorage.getItem('harmony_profile_owner');
+    const storedName = localStorage.getItem('harmony_profile_name');
+    if (storedName && storedId === user.userId) return storedName;
+  }
+
+  // Mentors/parents/admins: never touch harmony_profile_name.
+  // Use a role-specific key if it exists, else format the email.
+  if (user.role === 'mentor') {
+    return localStorage.getItem('harmony_mentor_name') || emailToFirstName(user.email);
+  }
+
+  return emailToFirstName(user.email);
+}
+
+/**
+ * Wipes all auth tokens AND every harmony_* key from localStorage.
+ * Call this on logout and at the start of every new login.
+ */
+export function clearUserSession() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('role');
+  localStorage.removeItem('userId');
+
+  const harmonyKeys = Object.keys(localStorage).filter(k => k.startsWith('harmony_'));
+  harmonyKeys.forEach(k => localStorage.removeItem(k));
 }

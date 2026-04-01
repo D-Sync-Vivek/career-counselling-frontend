@@ -1,13 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, Map, Video, Settings, LogOut,
   Bell, User, Brain, Zap, Sparkles, ChevronRight, CheckCircle2,
-  Lock, ArrowRight, Target,
+  Lock, ArrowRight, Target,Users, UserCheck,
+  Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getUserDisplayName } from '../utils/jwt';
+import { getUserDisplayName, clearUserSession } from '../utils/jwt';
 import confetti from 'canvas-confetti';
+import { toast } from 'react-toastify';
+
+import ActiveRoadmap from '../components/sections/ActiveRoadmap';
+import { parentStudentApi } from '../services/api/parentStudentApi';
+import { roadmapApi } from '../services/api/roadmapApi';
+import { mentorshipApi } from '../services/api/mentorshipApi';
 
 // ============================================================================
 // 1. SPLIT TEXT ANIMATION 
@@ -84,20 +91,30 @@ const ShinyOverlay = () => (
 // HELPER HOOKS & COMPONENTS
 // ============================================================================
 function useProgress() {
-  const profileDone   = localStorage.getItem('harmony_profile_done') === 'true';
-  const personalityDone = localStorage.getItem('harmony_personality_done') === 'true';
-  const aptitudeDone  = localStorage.getItem('harmony_aptitude_done') === 'true';
-  const assessmentsDone = personalityDone && aptitudeDone;
-  const selectedCareer = (() => {
-    try { return JSON.parse(localStorage.getItem('harmony_selected_career')); } catch { return null; }
-  })();
-  const personalityScores = (() => {
-    try { return JSON.parse(localStorage.getItem('harmony_personality_scores')); } catch { return null; }
-  })();
-  const aptitudeScores = (() => {
-    try { return JSON.parse(localStorage.getItem('harmony_aptitude_scores')); } catch { return null; }
-  })();
-  return { profileDone, personalityDone, aptitudeDone, assessmentsDone, selectedCareer, personalityScores, aptitudeScores };
+  const [progress, setProgress] = useState({
+    profileDone: localStorage.getItem('harmony_profile_done') === 'true',
+    personalityDone: localStorage.getItem('harmony_personality_done') === 'true',
+    aptitudeDone: localStorage.getItem('harmony_aptitude_done') === 'true',
+    assessmentsDone: false,
+    selectedCareer: null,
+  });
+
+  useEffect(() => {
+    // 1. Sync synchronous local storage items
+    const career = (() => { try { return JSON.parse(localStorage.getItem('harmony_selected_career')); } catch { return null; } })();
+    
+    // 2. Add an API call here to fetch the user's actual DB status
+    // Example: apiClient.get('/api/v1/profiles/me').then(data => { ... })
+    // For now, we will safely update the assessments check based on existing storage
+    setProgress(prev => ({
+      ...prev,
+      assessmentsDone: prev.personalityDone && prev.aptitudeDone,
+      selectedCareer: career
+    }));
+
+  }, []);
+
+  return progress;
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
@@ -138,11 +155,97 @@ export default function Dashboard() {
   const name = getUserDisplayName();
   const progress = useProgress();
 
+  const [inviteCode, setInviteCode] = useState(null);
+  const [roadmapStatus, setRoadmapStatus] = useState('overview'); // Can be 'overview', 'active', 'completed'
+// Fetch user progress from backend on login to fix "Local Storage Amnesia"
+  useEffect(() => {
+    const checkUserProgress = async () => {
+      try {
+        const { apiClient } = await import('../services/api/apiClient');
+        const response = await apiClient.get('/api/v1/auth/users/me');
+        let stateChanged = false;
+
+        // Restore Profile Status
+        if (response.progress.profile_done) {
+          localStorage.setItem('harmony_profile_done', 'true');
+          stateChanged = true;
+        }
+        
+        // Restore Aptitude Status
+        if (response.progress.aptitude_done) {
+          localStorage.setItem('harmony_aptitude_done', 'true');
+          stateChanged = true;
+        }
+
+        // Restore Personality Status
+        if (response.progress.personality_done) {
+          localStorage.setItem('harmony_personality_done', 'true');
+          stateChanged = true;
+        }
+
+        // If we restored anything, trigger a reload so the UI catches up instantly
+        if (stateChanged) {
+          window.location.reload(); 
+        }
+
+      } catch (error) {
+        console.error("No existing profile found or error fetching progress:", error);
+      }
+    };
+
+    // Only run the DB check if the browser's local storage looks empty
+    if (!localStorage.getItem('harmony_profile_done')) {
+      checkUserProgress();
+    }
+  }, []);
+  // Fetch invite code on component mount
+  useEffect(() => {
+    const getInviteCode = async () => {
+      try {
+        const response = await parentStudentApi.getStudentInviteCode();
+        setInviteCode(response.invite_code);
+      } catch (error) {
+        console.error("Error fetching invite code:", error);
+        toast.error("Failed to fetch invite code.");
+      }
+    };
+    getInviteCode();
+  }, []);
+  const [recommendedMentors, setRecommendedMentors] = useState([]);
+const [loadingMentors, setLoadingMentors] = useState(false);
+
+useEffect(() => {
+  if (progress.selectedCareer) {
+    const fetchMentors = async () => {
+      setLoadingMentors(true);
+      try {
+        // We call our API bundle
+        const mentors = await mentorshipApi.getRecommendedMentors(progress.selectedCareer.title);
+        setRecommendedMentors(mentors);
+      } catch (error) {
+        console.error("Mentor fetch failed", error);
+      } finally {
+        setLoadingMentors(false);
+      }
+    };
+    fetchMentors();
+  }
+}, [progress.selectedCareer]);
+
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userId');
+    clearUserSession();
     navigate('/');
+  };
+
+  const startJourney = async () => {
+    try {
+      await roadmapApi.startRoadmap();
+      setRoadmapStatus('active');
+      toast.success("Your career journey has started!");
+    } catch (error) {
+      console.error("Error starting roadmap:", error);
+      toast.error("Failed to start roadmap.");
+    }
   };
 
   const currentPhase = !progress.profileDone ? 1
@@ -381,9 +484,8 @@ export default function Dashboard() {
             whileHover={{ scale: 1.02, y: -8 }}
             transition={springTransition}
             className={`group md:col-span-2 rounded-3xl p-8 relative overflow-hidden shadow-sm transition-shadow duration-300 hover:shadow-2xl ${
-              progress.selectedCareer ? 'bg-gradient-to-br from-slate-800 to-slate-900 text-white cursor-pointer' : 'bg-white border border-slate-100 text-slate-900'
+              progress.selectedCareer && roadmapStatus === 'overview' ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white cursor-pointer' : 'bg-white border border-slate-100 text-slate-900'
             }`}
-            onClick={() => progress.selectedCareer && navigate('/roadmap')}
           >
             {progress.selectedCareer && <ShinyOverlay />} 
             {!progress.selectedCareer ? (
@@ -398,25 +500,113 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-blue-500/20 transition-colors duration-500" />
-                <div className="relative z-10 flex items-center justify-between">
-                  <div>
-                    <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/20">
-                      🗺️ Phase 4 — Roadmap Ready
-                    </span>
-                    <BlurText text="View Your Full Roadmap" className="text-2xl font-extrabold mb-2 text-white block" />
-                    <BlurText text="Your personalised week-by-week career roadmap is ready. See every phase, milestone, and task you need to reach your goal." delay={0.2} className="text-slate-400 font-medium max-w-lg block" />
+                {roadmapStatus === 'overview' && (
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div>
+                      <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/20">
+                        🗺️ Phase 4 — Roadmap Ready
+                      </span>
+                      <BlurText text="Your Roadmap is Ready!" className="text-2xl font-extrabold mb-2 text-white block" />
+                      <BlurText text="Your personalised week-by-week career roadmap is ready. Start your journey today!" delay={0.2} className="text-slate-400 font-medium max-w-lg block" />
+                      <button onClick={startJourney} className="mt-6 flex items-center gap-2 px-6 py-3.5 bg-white text-emerald-600 font-extrabold rounded-2xl shadow-sm hover:scale-105 hover:shadow-lg transition-all duration-300 w-fit text-base">
+                        Start My Journey <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform duration-300" />
+                      </button>
+                    </div>
+                    <div className="shrink-0 w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-400 rounded-2xl flex items-center justify-center shadow-lg ml-4 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
+                      <Target size={32} className="text-white" />
+                    </div>
                   </div>
-                  <div className="shrink-0 w-16 h-16 bg-gradient-to-br from-blue-500 to-sky-400 rounded-2xl flex items-center justify-center shadow-lg ml-4 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
-                    <Target size={32} className="text-white" />
-                  </div>
-                </div>
+                )}
+                {roadmapStatus === 'active' && <ActiveRoadmap />}
               </>
             )}
           </motion.div>
 
-        </div>
+          {/* ===================== Parent Invite Section ===================== */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={springTransition}
+            className="md:col-span-1 rounded-3xl p-8 relative overflow-hidden bg-white border border-slate-100 shadow-sm"
+          >
+            <h3 className="font-extrabold text-slate-800 mb-4">Share Profile with Parents</h3>
+            {inviteCode ? (
+              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <p className="font-bold text-slate-800 tracking-widest text-lg">{inviteCode}</p>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(inviteCode);
+                    toast.success("Invite code copied!");
+                  }}
+                  className="ml-4 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Copy
+                </button>
+              </div>
+            ) : (
+              <p className="text-slate-500">Loading invite code...</p>
+            )}
+          </motion.div>
 
+        </div>
+        
+            {progress.selectedCareer && (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="md:col-span-3 bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mt-6"
+  >
+    <div className="flex items-center justify-between mb-6">
+      <div>
+        <h3 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+          <Users className="text-blue-500" size={24} /> Recommended Mentors
+        </h3>
+        <p className="text-slate-500 font-medium mt-1">
+          Connect with experts who can help you become a {progress.selectedCareer.title}
+        </p>
+      </div>
+    </div>
+
+    {loadingMentors ? (
+      <div className="flex items-center gap-3 py-8 text-slate-400">
+        <Loader2 className="animate-spin" /> <span>Finding your matches...</span>
+      </div>
+    ) : (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {recommendedMentors.length > 0 ? (
+          recommendedMentors.map((mentor) => (
+            <div key={mentor.id} className="bg-slate-50 rounded-2xl p-5 border border-slate-100 hover:border-blue-200 transition-all group">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg">
+                  {mentor.full_name?.[0] || 'M'}
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800">{mentor.full_name || 'Verified Mentor'}</h4>
+                  <p className="text-xs font-bold text-blue-500 uppercase tracking-tighter">{mentor.expertise}</p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-500 line-clamp-2 mb-4 leading-relaxed">
+                {mentor.bio || "Industry professional with expertise in " + mentor.expertise}
+              </p>
+              <button 
+                onClick={() => navigate(`/mentorship/${mentor.id}`)}
+                className="w-full py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-100 transition-all flex items-center justify-center gap-2"
+              >
+                View Profile <ChevronRight size={16} />
+              </button>
+            </div>
+          ))
+        ) : (
+          <div className="md:col-span-3 py-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+             <UserCheck size={40} className="mx-auto text-slate-300 mb-3" />
+             <p className="text-slate-500 font-semibold">No direct matches for this niche yet.</p>
+             <button onClick={() => navigate('/mentorship')} className="mt-2 text-blue-500 font-bold text-sm">Browse all mentors</button>
+          </div>
+        )}
+      </div>
+    )}
+  </motion.div>
+)}
         {/* ===================== DIV 4: Motivation Footer ===================== */}
         {overallPct === 100 && (
           <motion.div

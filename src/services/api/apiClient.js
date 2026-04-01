@@ -1,5 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
-
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 async function request(path, options = {}) {
   const token = localStorage.getItem("token");
 
@@ -38,10 +37,22 @@ async function request(path, options = {}) {
 
 export const apiClient = {
   get: (path, options = {}) => request(path, { ...options, method: "GET" }),
-  post: (path, body, options = {}) =>
-    request(path, {
+  
+  post: (path, body, options = {}) => {
+    // If it's FormData (like login), we don't stringify it.
+    // If it's a regular object, we stringify it for the backend.
+    const isFormData = body instanceof FormData;
+    return request(path, {
       ...options,
       method: "POST",
-      body: body instanceof FormData ? body : JSON.stringify(body),
+      body: isFormData ? body : JSON.stringify(body),
+    });
+  },
+
+  patch: (path, body, options = {}) =>
+    request(path, {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
 };

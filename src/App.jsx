@@ -11,7 +11,8 @@ import PersonalityTest from './pages/PersonalityTest';
 import AptitudeTest from './pages/AptitudeTest';
 import CareerRecommendations from './pages/CareerRecommendations';
 import Roadmap from './pages/Roadmap';
-
+import MentorProfilePublic from './pages/MentorProfilePublic';
+import Mentorship from './pages/Mentorship';
 export default function App() {
   return (
     <Router>
@@ -19,7 +20,8 @@ export default function App() {
         <Route path="/"          element={<Home />} />
         <Route path="/signin"    element={<SignIn />} />
         <Route path="/signup"    element={<SignUp />} />
-
+        <Route path="/mentorship" element={<Mentorship />} />
+        <Route path="/mentorship/:mentorId" element={<MentorProfilePublic />} />
         {/* Role-based Dashboards */}
         <Route path="/dashboard"        element={<Dashboard />} />
         <Route path="/mentor-dashboard" element={<MentorDashboard />} />
@@ -32,6 +34,7 @@ export default function App() {
         <Route path="/career-recommendations" element={<CareerRecommendations />} />
         <Route path="/roadmap"                element={<Roadmap />} />
       </Routes>
+      
     </Router>
   );
 }

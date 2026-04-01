@@ -14,6 +14,18 @@ const MODULES = [
   { key: 'financial', label: 'Financial Background', icon: DollarSign, color: 'from-slate-500 to-gray-400', desc: 'Help us find the right fit' },
 ];
 
+// Static questions for the 'profile' module (no backend endpoint for this)
+const PROFILE_STATIC_QUESTIONS = {
+  full_name: 'What is your full name?',
+  dob: 'What is your date of birth?',
+  gender: 'What is your gender?',
+  current_class: 'What class/grade are you currently in?',
+  school_type: 'What type of school do you attend?',
+  state: 'Which state are you from?',
+  area_type: 'What type of area do you live in?',
+  medium_of_learning: 'What is your medium of learning?',
+};
+
 const QUESTION_CONFIGS = {
   // profile
   full_name: { type: 'text', placeholder: 'Your full legal name' },
@@ -161,27 +173,33 @@ export default function ProfileCreation() {
   async function loadQuestions(stepIndex) {
     const mod = MODULES[stepIndex];
     if (allQuestions[mod.key]) return;
+
+    // 'profile' has no backend endpoint — use static questions
+    if (mod.key === 'profile') {
+      setAllQuestions(prev => ({ ...prev, profile: PROFILE_STATIC_QUESTIONS }));
+      return;
+    }
+
     setLoadingStep(true);
     try {
       const data = await getModuleQuestions(mod.key);
-      
+
       let questionsObj = data.questions || {};
 
-      // FIX: If the backend nested the questions inside another object 
-      // (e.g., { questions: { academic: { ... } } }), we unwrap it here.
+      // Unwrap one level of nesting: { academic: { q1: "...", ... } } → { q1: "...", ... }
       const firstValue = Object.values(questionsObj)[0];
-      if (firstValue && typeof firstValue === 'object') {
-          questionsObj = firstValue;
+      if (firstValue !== null && firstValue !== undefined && typeof firstValue === 'object' && !Array.isArray(firstValue)) {
+        questionsObj = firstValue;
       }
 
+      // Keep only string values (question labels) — reject any nested objects
       const filtered = {};
       Object.entries(questionsObj).forEach(([k, v]) => {
-        // Double check we are only saving text/strings, not objects!
-        if (v !== null && typeof v === 'string') {
-            filtered[k] = v;
+        if (typeof v === 'string') {
+          filtered[k] = v;
         }
       });
-      
+
       setAllQuestions(prev => ({ ...prev, [mod.key]: filtered }));
     } catch (e) {
       console.error(e);
@@ -194,6 +212,9 @@ export default function ProfileCreation() {
     
     if (key === 'full_name' && val) {
       localStorage.setItem('harmony_profile_name', val.split(' ')[0]);
+      // Stamp owner so another user can't inherit this name after login
+      const u = getCurrentUser();
+      if (u?.userId) localStorage.setItem('harmony_profile_owner', u.userId);
     }
     // ADD THESE 3 LINES: Save the grade when they select it
     if (key === 'current_class' && val) {
@@ -203,19 +224,23 @@ export default function ProfileCreation() {
 
   async function handleNext() {
     const mod = currentModule;
-    const payload = {};
-    const questions = allQuestions[mod.key] || {};
-    Object.keys(questions).forEach(k => { payload[k] = answers[k] || ''; });
 
-    setSubmitting(true);
-    try {
-      if (user?.userId) {
-        await submitAssessment({ userId: user.userId, moduleKey: mod.key, payload });
+    // 'profile' is stored locally only — no backend endpoint for it
+    if (mod.key !== 'profile') {
+      const payload = {};
+      const questions = allQuestions[mod.key] || {};
+      Object.keys(questions).forEach(k => { payload[k] = answers[k] || ''; });
+
+      setSubmitting(true);
+      try {
+        if (user?.userId) {
+          await submitAssessment({ userId: user.userId, moduleKey: mod.key, payload });
+        }
+      } catch (e) {
+        console.error('Submit failed (continuing):', e);
+      } finally {
+        setSubmitting(false);
       }
-    } catch (e) {
-      console.error('Submit failed (continuing):', e);
-    } finally {
-      setSubmitting(false);
     }
 
     if (step < MODULES.length - 1) {
@@ -335,7 +360,7 @@ export default function ProfileCreation() {
                     className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm"
                   >
                     <label className="block text-sm font-bold text-slate-800 mb-3 leading-relaxed">
-                      {questionText}
+                      {typeof questionText === 'string' ? questionText : key}
                     </label>
                     <QuestionField
                       questionKey={key}

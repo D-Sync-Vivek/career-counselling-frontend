@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LineChart, Settings, LogOut, Bell,
@@ -7,11 +7,10 @@ import {
   User, MessageSquare, RefreshCw, Zap, Flag,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getCurrentUser, getUserDisplayName } from '../utils/jwt';
-import {
-  linkParentToStudent,
-  getStudentRoadmap, submitParentFeedback,
-} from '../services/api/mentorshipApi';
+import { getCurrentUser, getUserDisplayName, clearUserSession } from '../utils/jwt';
+import { mentorshipApi } from '../services/api/mentorshipApi';
+import { parentStudentApi } from '../services/api/parentStudentApi';
+import { roadmapApi } from '../services/api/roadmapApi';
 
 const IMPORTANCE_META = {
   CRITICAL:       { label: 'Critical',        bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    gradient: 'from-rose-500 to-pink-400' },
@@ -28,8 +27,8 @@ const TABS = [
 
 function NavItem({ icon: Icon, label, active, onClick }) {
   return (
-    <button onClick={onClick} className={`flex items-center w-full px-4 py-3 rounded-xl transition-all font-semibold text-left ${active ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
-      <Icon size={20} className="mr-3 shrink-0" /> {label}
+    <button onClick={onClick} className={`group flex items-center w-full px-4 py-3 rounded-xl transition-all font-semibold text-left ${active ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+      <Icon size={20} className={`mr-3 shrink-0 transition-transform ${!active && 'group-hover:scale-110'}`} /> {label}
     </button>
   );
 }
@@ -52,8 +51,8 @@ function Toast({ message, type, onClose }) {
 }
 
 // ── OVERVIEW TAB ──────────────────────────────────────────────────────────────
-function OverviewTab({ linkedStudentId, navigate }) {
-  const isLinked = !!linkedStudentId;
+function OverviewTab({ linkedStudent, navigate }) {
+  const isLinked = !!linkedStudent;
 
   return (
     <div className="space-y-6">
@@ -67,7 +66,7 @@ function OverviewTab({ linkedStudentId, navigate }) {
               {isLinked ? '✅ Child Account Linked' : '🔗 Link Your Child\'s Account'}
             </span>
             <h2 className="text-2xl font-extrabold mb-2">
-              {isLinked ? 'Track your child\'s AI career journey' : 'Connect to your child\'s account'}
+              {isLinked ? `Track ${linkedStudent.full_name}'s AI career journey` : 'Connect to your child\'s account'}
             </h2>
             <p className="text-purple-100 font-medium max-w-lg mb-6">
               {isLinked
@@ -77,11 +76,12 @@ function OverviewTab({ linkedStudentId, navigate }) {
             <div className="flex gap-3 flex-wrap">
               {isLinked ? (
                 <>
-                  <button onClick={() => navigate('/roadmap')} className="flex items-center gap-2 px-5 py-3 bg-white text-purple-600 font-extrabold rounded-xl shadow-sm hover:scale-105 transition-all text-sm">
+                  <button onClick={() => navigate && window.dispatchEvent(new CustomEvent('switchTab', { detail: 'roadmap' }))} className="flex items-center gap-2 px-5 py-3 bg-white text-purple-600 font-extrabold rounded-xl shadow-sm hover:scale-105 transition-all text-sm">
                     <Map size={16} /> View Full Roadmap
                   </button>
-                  <button onClick={() => navigate('/career-recommendations')} className="flex items-center gap-2 px-5 py-3 bg-purple-500/50 text-white font-extrabold rounded-xl border border-purple-400 hover:bg-purple-500/70 transition-all text-sm">
-                    <Sparkles size={16} /> Career Matches
+                  {/* Removed the direct link to career matches for parents as they should view the roadmap instead */}
+                  <button onClick={() => navigate && window.dispatchEvent(new CustomEvent('switchTab', { detail: 'feedback' }))} className="flex items-center gap-2 px-5 py-3 bg-purple-500/50 text-white font-extrabold rounded-xl border border-purple-400 hover:bg-purple-500/70 transition-all text-sm">
+                    <MessageSquare size={16} /> Submit Feedback
                   </button>
                 </>
               ) : (
@@ -97,15 +97,17 @@ function OverviewTab({ linkedStudentId, navigate }) {
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4"
+          className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4 flex flex-col justify-center"
         >
-          <div className={`flex items-center gap-4 p-4 rounded-2xl border ${isLinked ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-            <div className={`w-11 h-11 text-white rounded-full flex items-center justify-center shadow-md ${isLinked ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+          <div className={`flex items-center gap-4 p-4 rounded-2xl border transition-colors ${isLinked ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
+            <div className={`w-11 h-11 text-white rounded-full flex items-center justify-center shadow-md transition-colors ${isLinked ? 'bg-emerald-500' : 'bg-slate-400'}`}>
               <ShieldCheck size={18} />
             </div>
             <div>
-              <p className={`text-xs font-bold uppercase tracking-wider ${isLinked ? 'text-emerald-600' : 'text-slate-400'}`}>Link Status</p>
-              <p className="text-xl font-extrabold text-slate-800">{isLinked ? 'Linked' : 'Not linked'}</p>
+              <p className={`text-xs font-bold uppercase tracking-wider transition-colors ${isLinked ? 'text-emerald-600' : 'text-slate-400'}`}>Link Status</p>
+              <p className={`text-xl font-extrabold ${isLinked ? 'text-slate-800' : 'text-slate-500'}`}>
+                {isLinked ? linkedStudent.full_name : 'Not linked'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-4 bg-purple-50 p-4 rounded-2xl border border-purple-100">
@@ -121,21 +123,20 @@ function OverviewTab({ linkedStudentId, navigate }) {
       </div>
 
       {isLinked && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {[
-            { icon: Map, label: "Child's Roadmap",    desc: 'View personalised career phases', color: 'from-blue-500 to-sky-400',   path: null, tab: 'roadmap' },
-            { icon: MessageSquare, label: 'Submit Feedback',   desc: 'Share study habits & observations', color: 'from-purple-500 to-fuchsia-400', path: null, tab: 'feedback' },
-            { icon: Sparkles, label: 'Career Matches', desc: 'See AI recommended career paths', color: 'from-amber-500 to-orange-400', path: '/career-recommendations', tab: null },
+            { icon: Map, label: "Child's Roadmap",    desc: 'View personalised career phases', color: 'from-blue-500 to-sky-400',   tab: 'roadmap' },
+            { icon: MessageSquare, label: 'Submit Feedback',   desc: 'Share study habits & observations', color: 'from-purple-500 to-fuchsia-400', tab: 'feedback' },
           ].map((item, i) => {
             const Icon = item.icon;
             return (
               <motion.button
                 key={i}
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }}
-                onClick={() => item.path ? navigate(item.path) : window.dispatchEvent(new CustomEvent('switchTab', { detail: item.tab }))}
-                className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 text-left hover:border-purple-200 hover:shadow-md transition-all group"
+                onClick={() => window.dispatchEvent(new CustomEvent('switchTab', { detail: item.tab }))}
+                className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 text-left hover:border-purple-200 hover:-translate-y-1 hover:shadow-md transition-all duration-300 group"
               >
-                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${item.color} flex items-center justify-center mb-4 shadow-sm`}>
+                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${item.color} flex items-center justify-center mb-4 shadow-sm group-hover:scale-110 transition-transform duration-300`}>
                   <Icon size={22} className="text-white" />
                 </div>
                 <p className="font-extrabold text-slate-800 mb-1">{item.label}</p>
@@ -153,53 +154,65 @@ function OverviewTab({ linkedStudentId, navigate }) {
 }
 
 // ── LINK TAB ──────────────────────────────────────────────────────────────────
-function LinkTab({ linkedStudentId, onLinked, toast }) {
+function LinkTab({ linkedStudent, onLinked, toast }) {
   const [inviteCode, setInviteCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  async function handleLink(e) {
+  const handleLink = async (e) => {
     e.preventDefault();
+    if (!inviteCode || inviteCode.length !== 6) {
+      toast("Please enter a valid 6-character code.", "error");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const res = await linkParentToStudent(inviteCode.trim().toUpperCase());
-      localStorage.setItem('harmony_linked_student_id', res.student_id);
-      onLinked(res.student_id);
-      toast('Successfully linked to your child\'s account!', 'success');
-    } catch (err) {
-      toast(err.message || 'Invalid invite code. Ask your child to share their code.', 'error');
+      await parentStudentApi.linkParentToStudent(inviteCode);
+      toast("Account successfully linked!", "success");
+      
+      // Fetch the newly linked student to update the UI instantly
+      const response = await parentStudentApi.getLinkedStudent();
+      if (response && response.is_linked) {
+        onLinked(response.student);
+      }
+    } catch (error) {
+      console.error("Linking error:", error);
+      toast(error.response?.data?.detail || "Failed to link account. Please check the code.", "error");
     } finally {
       setSubmitting(false);
     }
-  }
+  };
 
-  if (linkedStudentId) {
+  if (linkedStudent) {
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-3xl border border-emerald-200 shadow-sm p-8 max-w-lg"
       >
         <div className="flex items-center gap-4 mb-5">
-          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center">
+          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center shrink-0">
             <CheckCircle2 size={28} className="text-emerald-500" />
           </div>
           <div>
             <h3 className="text-xl font-extrabold text-slate-900">Account Linked!</h3>
-            <p className="text-sm text-slate-500 font-medium">You are connected to your child's Harmony account.</p>
+            <p className="text-sm text-slate-500 font-medium">You are connected to {linkedStudent.full_name}'s Harmony account.</p>
           </div>
         </div>
         <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Student ID</p>
-          <p className="text-sm font-mono text-slate-700 break-all">{linkedStudentId}</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Student Contact</p>
+          <p className="text-sm font-medium text-slate-700">{linkedStudent.email}</p>
         </div>
-        <p className="text-sm text-slate-500 font-medium mt-4">
-          You can now view your child's career roadmap and submit observations to help personalise their AI journey.
-        </p>
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('switchTab', { detail: 'roadmap' }))}
+          className="mt-6 w-full flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white font-bold rounded-xl shadow-sm hover:bg-emerald-600 transition-colors"
+        >
+          View Roadmap <ArrowUpRight size={18} />
+        </button>
       </motion.div>
     );
   }
 
   return (
     <div className="max-w-lg space-y-6">
-      {/* Instructions */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
         className="bg-gradient-to-br from-purple-600 to-fuchsia-500 rounded-3xl p-7 text-white relative overflow-hidden"
       >
@@ -222,7 +235,6 @@ function LinkTab({ linkedStudentId, onLinked, toast }) {
         </div>
       </motion.div>
 
-      {/* Link Form */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8"
       >
@@ -234,14 +246,14 @@ function LinkTab({ linkedStudentId, onLinked, toast }) {
               value={inviteCode}
               onChange={e => setInviteCode(e.target.value.toUpperCase())}
               placeholder="e.g. 3RUA8U"
-              maxLength={10}
+              maxLength={6}
               required
               className="w-full px-4 py-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none font-mono text-2xl tracking-widest text-center text-slate-900 uppercase shadow-sm"
             />
           </div>
           <button
             type="submit"
-            disabled={submitting || inviteCode.length < 4}
+            disabled={submitting || inviteCode.length !== 6}
             className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-purple-600 to-fuchsia-500 text-white font-bold text-lg rounded-xl shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? <><Loader2 size={20} className="animate-spin" /> Linking...</> : <><Link2 size={20} /> Link Account</>}
@@ -253,44 +265,56 @@ function LinkTab({ linkedStudentId, onLinked, toast }) {
 }
 
 // ── ROADMAP TAB ───────────────────────────────────────────────────────────────
-function RoadmapTab({ linkedStudentId }) {
+function RoadmapTab({ linkedStudent }) {
   const [roadmap, setRoadmap] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandedPhase, setExpandedPhase] = useState(0);
 
   useEffect(() => {
-    if (linkedStudentId) fetchRoadmap();
-  }, [linkedStudentId]);
+    if (linkedStudent) fetchRoadmap();
+  }, [linkedStudent]);
 
   async function fetchRoadmap() {
     setLoading(true);
     setError('');
     try {
-      const data = await getStudentRoadmap(linkedStudentId);
+      // Because the parent is querying the active roadmap, you might need a dedicated API call 
+      // in your backend for parents to fetch their linked student's roadmap.
+      // If `roadmapApi.getActiveRoadmap()` uses the logged-in user's token, it will fail for parents!
+      // Ensure you are using the correct parent-specific endpoint here.
+      const data = await roadmapApi.getActiveRoadmap(); 
       setRoadmap(data);
     } catch (e) {
-      setError(e.message || 'Failed to load roadmap');
+      setError(e.response?.data?.detail || 'Failed to load roadmap or child has not started one yet.');
     } finally {
       setLoading(false);
     }
   }
 
-  if (!linkedStudentId) {
+  if (!linkedStudent) {
     return (
       <div className="text-center py-16 text-slate-400 max-w-md mx-auto">
-        <Link2 size={48} className="mx-auto mb-4 opacity-30" />
+        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Link2 size={32} className="text-slate-300" />
+        </div>
         <p className="font-extrabold text-slate-600 text-lg mb-2">No child account linked</p>
         <p className="font-medium text-sm">Link your child's account first to view their career roadmap.</p>
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('switchTab', { detail: 'link' }))}
+          className="mt-6 px-6 py-2.5 bg-purple-100 text-purple-600 font-bold rounded-xl hover:bg-purple-200 transition-colors"
+        >
+          Go to Link Tab
+        </button>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 gap-3 text-slate-500">
-        <Loader2 size={24} className="animate-spin text-purple-500" />
-        <span className="font-semibold text-lg">Generating child's roadmap...</span>
+      <div className="flex flex-col items-center justify-center py-20 gap-4 text-slate-500">
+        <Loader2 size={32} className="animate-spin text-purple-500" />
+        <span className="font-semibold text-lg">Fetching {linkedStudent.full_name}'s roadmap...</span>
       </div>
     );
   }
@@ -298,12 +322,12 @@ function RoadmapTab({ linkedStudentId }) {
   if (error) {
     return (
       <div className="max-w-md">
-        <div className="bg-red-50 border border-red-200 rounded-3xl p-8 text-center">
-          <AlertCircle size={40} className="text-red-400 mx-auto mb-4" />
-          <p className="font-extrabold text-slate-800 mb-2">Roadmap unavailable</p>
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-8 text-center">
+          <AlertCircle size={40} className="text-amber-400 mx-auto mb-4" />
+          <p className="font-extrabold text-slate-800 mb-2">Roadmap not found</p>
           <p className="text-sm text-slate-500 font-medium mb-5">{error}</p>
-          <button onClick={fetchRoadmap} className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-all mx-auto">
-            <RefreshCw size={16} /> Retry
+          <button onClick={fetchRoadmap} className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 transition-all mx-auto shadow-sm">
+            <RefreshCw size={16} /> Retry Fetch
           </button>
         </div>
       </div>
@@ -316,90 +340,66 @@ function RoadmapTab({ linkedStudentId }) {
 
   return (
     <div className="max-w-3xl space-y-6">
-      {/* Hero */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
         className="bg-gradient-to-br from-purple-600 to-fuchsia-500 rounded-3xl p-8 text-white relative overflow-hidden"
       >
         <div className="absolute top-0 right-0 w-56 h-56 bg-white/10 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4" />
         <div className="relative z-10">
           <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
-            Your Child's Career Path
+            {linkedStudent.full_name}'s Career Path
           </span>
-          <h2 className="text-3xl font-extrabold mb-3">{roadmap.career_title}</h2>
+          <h2 className="text-3xl font-extrabold mb-3">{roadmap.title}</h2>
           <div className="flex flex-wrap gap-3">
-            {[
-              [Clock, roadmap.total_duration],
-              [Zap, roadmap.daily_commitment],
-              [Target, roadmap.difficulty_level],
-              [User, roadmap.student_level],
-            ].map(([Icon, val], i) => val ? (
-              <div key={i} className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-xl px-3 py-2 border border-white/30 text-sm font-bold">
-                <Icon size={14} /> {val}
+             <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-xl px-3 py-2 border border-white/30 text-sm font-bold">
+                <Target size={14} /> Status: {roadmap.status}
               </div>
-            ) : null)}
+              <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-xl px-3 py-2 border border-white/30 text-sm font-bold">
+                <Zap size={14} /> Progress: {Math.round(roadmap.progress_percentage)}%
+              </div>
           </div>
         </div>
       </motion.div>
 
-      {/* Adjustments */}
-      {roadmap.parent_adjustments && (
-        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5 flex items-start gap-3">
-          <MessageSquare size={18} className="text-purple-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-1">Your Feedback is Active</p>
-            <p className="text-sm font-semibold text-purple-800">{roadmap.parent_adjustments}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Phases */}
       <div className="space-y-4">
         {roadmap.phases?.map((phase, i) => {
-          const meta = IMPORTANCE_META[phase.importance] || IMPORTANCE_META.STRATEGIC;
           const gradient = PHASE_GRADIENTS[i % PHASE_GRADIENTS.length];
           const isOpen = expandedPhase === i;
           return (
-            <div key={i} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div key={phase.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
               <button onClick={() => setExpandedPhase(isOpen ? -1 : i)} className="w-full text-left">
                 <div className={`bg-gradient-to-r ${gradient} p-5 text-white`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center font-extrabold text-sm border border-white/30">{i + 1}</div>
+                      <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center font-extrabold text-sm border border-white/30">{phase.sequence}</div>
                       <div>
                         <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full border border-white/30">{meta.label}</span>
-                          <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full border border-white/30">{phase.duration_weeks}w</span>
+                          <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded-full border border-white/30">{phase.status}</span>
                         </div>
-                        <h4 className="font-extrabold text-base">{phase.phase_title}</h4>
+                        <h4 className="font-extrabold text-base">{phase.title}</h4>
                       </div>
                     </div>
-                    {isOpen ? <ChevronRight size={20} className="rotate-90 text-white/80" /> : <ChevronRight size={20} className="text-white/80" />}
+                    {isOpen ? <ChevronRight size={20} className="rotate-90 text-white/80 transition-transform" /> : <ChevronRight size={20} className="text-white/80 transition-transform" />}
                   </div>
                 </div>
               </button>
               <AnimatePresence>
                 {isOpen && (
-                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
-                    <div className="p-5 space-y-4">
-                      <p className="text-slate-600 font-medium text-sm">{phase.description}</p>
-                      {phase.skills_targeted?.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {phase.skills_targeted.map(s => (
-                            <span key={s} className="text-xs font-bold bg-slate-100 text-slate-600 px-3 py-1 rounded-full">{s}</span>
-                          ))}
+                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden bg-slate-50">
+                    <div className="p-5 space-y-3">
+                      {phase.tasks?.map((task) => (
+                        <div key={task.id} className={`p-4 rounded-xl border flex items-start gap-3 ${task.status === 'Completed' ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+                           {task.status === 'Completed' ? (
+                             <CheckCircle2 size={20} className="text-emerald-500 shrink-0 mt-0.5" />
+                           ) : (
+                             <div className="w-5 h-5 rounded-full border-2 border-slate-300 shrink-0 mt-0.5" />
+                           )}
+                           <div>
+                             <p className={`text-sm font-bold ${task.status === 'Completed' ? 'text-emerald-800' : 'text-slate-700'}`}>{task.title}</p>
+                           </div>
                         </div>
-                      )}
-                      {phase.success_criteria && (
-                        <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                          <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5" />
-                          <p className="text-xs font-semibold text-emerald-700"><span className="font-extrabold">Ready when:</span> {phase.success_criteria}</p>
-                        </div>
-                      )}
-                      {phase.milestone_project && (
-                        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                          <Flag size={16} className="text-amber-500 shrink-0 mt-0.5" />
-                          <p className="text-xs font-semibold text-amber-700"><span className="font-extrabold">Project:</span> {phase.milestone_project}</p>
-                        </div>
+                      ))}
+                      {(!phase.tasks || phase.tasks.length === 0) && (
+                        <p className="text-slate-500 text-sm italic">No tasks found for this phase.</p>
                       )}
                     </div>
                   </motion.div>
@@ -414,18 +414,19 @@ function RoadmapTab({ linkedStudentId }) {
 }
 
 // ── FEEDBACK TAB ──────────────────────────────────────────────────────────────
-function FeedbackTab({ linkedStudentId, toast }) {
+function FeedbackTab({ linkedStudent, toast }) {
   const [form, setForm] = useState({ study_habits: '', behavior_insights: '' });
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!linkedStudentId) { toast('Link your child\'s account first', 'error'); return; }
+    if (!linkedStudent) { toast("Link your child's account first", "error"); return; }
+    
     setSubmitting(true);
     try {
-      await submitParentFeedback({ student_id: linkedStudentId, ...form });
+      await submitParentFeedback({ student_id: linkedStudent.id, ...form });
       setForm({ study_habits: '', behavior_insights: '' });
-      toast('Feedback submitted! It will shape your child\'s roadmap.', 'success');
+      toast("Feedback submitted! It will shape your child's roadmap.", "success");
     } catch (err) {
       toast(err.message || 'Failed to submit feedback', 'error');
     } finally {
@@ -435,23 +436,25 @@ function FeedbackTab({ linkedStudentId, toast }) {
 
   const inputCls = "w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-400 shadow-sm resize-none";
 
+  if (!linkedStudent) {
+    return (
+      <div className="max-w-xl flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+        <AlertCircle size={18} className="text-amber-500 shrink-0" />
+        <p className="text-sm font-semibold text-amber-700">Link your child's account first before submitting feedback.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-xl space-y-6">
-      {!linkedStudentId && (
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
-          <AlertCircle size={18} className="text-amber-500 shrink-0" />
-          <p className="text-sm font-semibold text-amber-700">Link your child's account first before submitting feedback.</p>
-        </div>
-      )}
-
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
         className="bg-gradient-to-br from-purple-50 to-fuchsia-50 border border-purple-100 rounded-3xl p-6"
       >
-        <div className="flex items-start gap-3 mb-0">
+        <div className="flex items-start gap-3">
           <Sparkles size={20} className="text-purple-500 shrink-0 mt-0.5" />
           <div>
-            <p className="font-extrabold text-slate-800 text-sm">Your feedback personalises the AI roadmap</p>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">The AI uses your observations to adjust your child's learning pace, focus areas, and recommendations.</p>
+            <p className="font-extrabold text-slate-800 text-sm">Personalise {linkedStudent.full_name}'s AI roadmap</p>
+            <p className="text-xs text-slate-500 font-medium mt-1">The AI uses your observations to adjust your child's learning pace, focus areas, and recommendations.</p>
           </div>
         </div>
       </motion.div>
@@ -482,7 +485,7 @@ function FeedbackTab({ linkedStudentId, toast }) {
           </div>
           <button
             type="submit"
-            disabled={submitting || !linkedStudentId}
+            disabled={submitting}
             className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-purple-600 to-fuchsia-500 text-white font-bold text-lg rounded-xl shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? <><Loader2 size={20} className="animate-spin" /> Submitting...</> : <><MessageSquare size={20} /> Submit Feedback</>}
@@ -498,10 +501,26 @@ export default function ParentDashboard() {
   const navigate = useNavigate();
   const name = getUserDisplayName();
   const [activeTab, setActiveTab] = useState('overview');
-  const [linkedStudentId, setLinkedStudentId] = useState(
-    () => localStorage.getItem('harmony_linked_student_id') || ''
-  );
+  const [linkedStudent, setLinkedStudent] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  // Check link status on mount
+  useEffect(() => {
+    const fetchLinkStatus = async () => {
+      try {
+        const response = await parentStudentApi.getLinkedStudent();
+        if (response && response.is_linked) {
+          setLinkedStudent(response.student);
+        }
+      } catch (error) {
+        console.log("No linked student found.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchLinkStatus();
+  }, []);
 
   useEffect(() => {
     const handler = (e) => setActiveTab(e.detail);
@@ -510,15 +529,21 @@ export default function ParentDashboard() {
   }, []);
 
   function handleLogout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userId');
+    clearUserSession();
     navigate('/');
   }
 
-  function handleLinked(studentId) {
-    setLinkedStudentId(studentId);
-    setActiveTab('roadmap');
+  function handleLinked(studentData) {
+    setLinkedStudent(studentData);
+    setActiveTab('overview');
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-purple-500" />
+      </div>
+    );
   }
 
   return (
@@ -543,8 +568,8 @@ export default function ParentDashboard() {
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Logged in as</p>
             <p className="text-sm font-bold text-slate-700 truncate">{getCurrentUser()?.email || 'Parent'}</p>
           </div>
-          <button onClick={handleLogout} className="flex items-center w-full px-4 py-3 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-semibold">
-            <LogOut size={20} className="mr-3" /> Sign Out
+          <button onClick={handleLogout} className="group flex items-center w-full px-4 py-3 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-semibold">
+            <LogOut size={20} className="mr-3 group-hover:-translate-x-1 transition-transform" /> Sign Out
           </button>
         </div>
       </aside>
@@ -556,10 +581,10 @@ export default function ParentDashboard() {
             <p className="text-slate-500 font-medium mt-1">{TABS.find(t => t.id === activeTab)?.label}</p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 shadow-sm">
+            <button className="relative p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 shadow-sm transition-colors">
               <Bell size={20} className="text-slate-600" />
             </button>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-400 to-fuchsia-500 border-2 border-white shadow-sm flex items-center justify-center text-white font-extrabold text-sm">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-400 to-fuchsia-500 border-2 border-white shadow-sm flex items-center justify-center text-white font-extrabold text-sm cursor-pointer hover:scale-105 transition-transform">
               {name[0]?.toUpperCase()}
             </div>
           </div>
@@ -567,10 +592,10 @@ export default function ParentDashboard() {
 
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-            {activeTab === 'overview'  && <OverviewTab linkedStudentId={linkedStudentId} navigate={navigate} />}
-            {activeTab === 'link'      && <LinkTab linkedStudentId={linkedStudentId} onLinked={handleLinked} toast={(m, t) => setToast({ message: m, type: t })} />}
-            {activeTab === 'roadmap'   && <RoadmapTab linkedStudentId={linkedStudentId} />}
-            {activeTab === 'feedback'  && <FeedbackTab linkedStudentId={linkedStudentId} toast={(m, t) => setToast({ message: m, type: t })} />}
+            {activeTab === 'overview'  && <OverviewTab linkedStudent={linkedStudent} navigate={navigate} />}
+            {activeTab === 'link'      && <LinkTab linkedStudent={linkedStudent} onLinked={handleLinked} toast={(m, t) => setToast({ message: m, type: t })} />}
+            {activeTab === 'roadmap'   && <RoadmapTab linkedStudent={linkedStudent} />}
+            {activeTab === 'feedback'  && <FeedbackTab linkedStudent={linkedStudent} toast={(m, t) => setToast({ message: m, type: t })} />}
           </motion.div>
         </AnimatePresence>
       </main>

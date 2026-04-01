@@ -1,60 +1,90 @@
 import { apiClient } from "./apiClient";
 
-// ── Mentor Profile ──────────────────────────────────────────────────────────
+export const mentorshipApi = {
+  // ── MENTOR SEARCH (Student Side) ──────────────────────────────────────────
 
-/** GET /api/v1/profiles/mentors/  → array of verified mentor objects */
-export const listMentors = () => apiClient.get("/api/v1/profiles/mentors/");
+  /** * GET /api/v1/mentorship/search/
+   * Semantic search to find mentors matching a specific career goal.
+   */
+  getRecommendedMentors: (careerTitle) => {
+    const goal = careerTitle || 'technology engineering science business';
+    return apiClient.get(`/api/v1/mentorship/search/?career_goal=${encodeURIComponent(goal)}`);
+  },
 
-/** POST /api/v1/profiles/mentors/  { expertise }
- *  → { mentor_id, message } */
-export const createMentorProfile = (expertise) =>
-  apiClient.post("/api/v1/profiles/mentors/", { expertise });
+  /** * GET /api/v1/mentorship/search/ (General list)
+   */
+  listMentors: (careerGoal = 'technology engineering science business') =>
+    apiClient.get(`/api/v1/mentorship/search/?career_goal=${encodeURIComponent(careerGoal)}`),
 
-// ── Availability ─────────────────────────────────────────────────────────────
+  // ── MENTOR PROFILE (Mentor Side) ──────────────────────────────────────────
 
-/** POST /api/v1/mentorship/availability/  { day_of_week, start_time, end_time }
- *  day_of_week: 0=Mon … 6=Sun   start_time/end_time: "HH:MM" */
-export const setAvailability = ({ day_of_week, start_time, end_time }) =>
-  apiClient.post("/api/v1/mentorship/availability/", { day_of_week, start_time, end_time });
+  /** GET /api/v1/profiles/mentors/me */
+  getMentorProfile: () =>
+    apiClient.get("/api/v1/profiles/mentors/me"),
 
-/** GET /api/v1/mentorship/availability/{mentor_id}  → array of slot objects */
-export const getMentorAvailability = (mentorId) =>
-  apiClient.get(`/api/v1/mentorship/availability/${mentorId}`);
+  /** POST /api/v1/profiles/mentors/ */
+  upsertMentorProfile: (profileData) =>
+    apiClient.post("/api/v1/profiles/mentors/", profileData),
 
-// ── Sessions ─────────────────────────────────────────────────────────────────
+  // ── AVAILABILITY (Both Sides) ─────────────────────────────────────────────
 
-/** POST /api/v1/mentorship/sessions/
- *  { mentor_id, availability_id, scheduled_at (ISO datetime), duration_minutes? } */
-export const bookSession = ({ mentor_id, availability_id, scheduled_at, duration_minutes = 60 }) =>
-  apiClient.post("/api/v1/mentorship/sessions/", {
-    mentor_id, availability_id, scheduled_at, duration_minutes,
-  });
+  /** POST /api/v1/availability/ */
+  setAvailability: (slots) =>
+    apiClient.post("/api/v1/availability/", { slots }),
 
-// ── Feedback ─────────────────────────────────────────────────────────────────
+  /** GET /api/v1/availability/{mentor_id} */
+  getMentorAvailability: (mentorId) =>
+    apiClient.get(`/api/v1/availability/${mentorId}`),
 
-/** POST /api/v1/mentorship/feedback/mentor/
- *  { session_id, notes?, action_items? } */
-export const submitMentorFeedback = ({ session_id, notes = "", action_items = "" }) =>
-  apiClient.post("/api/v1/mentorship/feedback/mentor/", { session_id, notes, action_items });
+  // ── SESSIONS & REQUESTS (Handshake) ───────────────────────────────────────
 
-/** POST /api/v1/mentorship/feedback/parent/
- *  { student_id, study_habits?, behavior_insights? } */
-export const submitParentFeedback = ({ student_id, study_habits = "", behavior_insights = "" }) =>
-  apiClient.post("/api/v1/mentorship/feedback/parent/", {
-    student_id, study_habits, behavior_insights,
-  });
+  /** * POST /api/v1/requests/ 
+   * Student requests a specific slot from a mentor.
+   */
+  requestMentorSession: (mentorId, slotId, message = '') => {
+    return apiClient.post("/api/v1/requests/", { 
+      mentor_id: mentorId, 
+      availability_id: slotId, 
+      message 
+    });
+  },
 
-// ── Parent / Student Linking ──────────────────────────────────────────────────
+  /** GET /api/v1/sessions/upcoming */
+  getUpcomingSessions: () =>
+    apiClient.get("/api/v1/sessions/upcoming"),
 
-/** GET /api/v1/profiles/students/invite-code  → { invite_code } */
-export const getStudentInviteCode = () =>
-  apiClient.get("/api/v1/profiles/students/invite-code");
+  /** GET /api/v1/requests/pending/ */
+  getPendingRequests: () =>
+    apiClient.get("/api/v1/requests/pending/"),
 
-/** POST /api/v1/profiles/students/link/  { invite_code }
- *  → { message, student_id } */
-export const linkParentToStudent = (invite_code) =>
-  apiClient.post("/api/v1/profiles/students/link/", { invite_code });
+  /** POST /api/v1/requests/{request_id}/approve */
+  approveRequest: (requestId) =>
+    apiClient.post(`/api/v1/requests/${requestId}/approve`, {}),
 
-/** GET /api/v1/roadmaps/{student_id}  → CareerRoadmapResponse */
-export const getStudentRoadmap = (student_id) =>
-  apiClient.get(`/api/v1/roadmaps/${student_id}`);
+  /** POST /api/v1/sessions/{session_id}/end */
+  endSession: (sessionId) =>
+    apiClient.post(`/api/v1/sessions/${sessionId}/end`, {}),
+
+  // ── FEEDBACK ─────────────────────────────────────────────────────────────
+
+  /** POST /api/v1/mentorship/feedback/mentor/ */
+  submitMentorFeedback: ({ session_id, notes = "", action_items = "" }) =>
+    apiClient.post("/api/v1/mentorship/feedback/mentor/", { session_id, notes, action_items }),
+
+  /** POST /api/v1/mentorship/feedback/parent/ */
+  submitParentFeedback: ({ student_id, study_habits = "", behavior_insights = "" }) =>
+    apiClient.post("/api/v1/mentorship/feedback/parent/", {
+      student_id, study_habits, behavior_insights,
+    }),
+  
+  getMentorDetails: (mentorId) => {
+    return apiClient.get(`/api/v1/mentorship/mentors/${mentorId}`);
+  },
+  createMentorshipRequest: (mentorId, availabilityId, message = "") => {
+    return apiClient.post("/api/v1/requests/create", {
+      mentor_id: mentorId,
+      availability_id: availabilityId,
+      message: message
+    });
+  }
+};

@@ -7,7 +7,7 @@ import { decodeJWT } from "../../utils/jwt";
  */
 export const loginUser = async ({ email, password }) => {
   const form = new FormData();
-  form.append("username", email);
+  form.append("username", email); // FastAPI expects 'username', not 'email'
   form.append("password", password);
 
   const data = await apiClient.post("/api/v1/auth/login", form);
@@ -19,7 +19,6 @@ export const loginUser = async ({ email, password }) => {
     userId: payload?.user_id || null,
   };
 };
-
 /**
  * Register — JSON body
  * Returns: { id, email, role }

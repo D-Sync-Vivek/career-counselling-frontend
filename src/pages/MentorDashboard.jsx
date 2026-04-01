@@ -3,23 +3,22 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Calendar, BarChart2, Settings, LogOut, Bell,
   Star, CheckCircle2, Plus, Loader2, AlertCircle, Clock,
-  ClipboardList, UserCheck,
+  ClipboardList, UserCheck, MessageSquare, Inbox, StopCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getCurrentUser, getUserDisplayName } from '../utils/jwt';
-import {
-  createMentorProfile, listMentors,
-  setAvailability, getMentorAvailability,
-  submitMentorFeedback,
-} from '../services/api/mentorshipApi';
+import { getCurrentUser, getUserDisplayName, clearUserSession } from '../utils/jwt';
+import { mentorshipApi } from '../services/api/mentorshipApi';
+
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const TABS = [
-  { id: 'overview',     label: 'Overview',    icon: BarChart2 },
-  { id: 'profile',      label: 'My Profile',  icon: UserCheck },
-  { id: 'availability', label: 'Availability', icon: Calendar },
-  { id: 'feedback',     label: 'Session Feedback', icon: ClipboardList },
+  { id: 'overview',     label: 'Overview',         icon: BarChart2 },
+  { id: 'sessions',     label: 'Sessions',          icon: Clock },
+  { id: 'requests',     label: 'Requests',          icon: Inbox },
+  { id: 'profile',      label: 'My Profile',        icon: UserCheck },
+  { id: 'availability', label: 'Availability',      icon: Calendar },
+  { id: 'feedback',     label: 'Session Feedback',  icon: ClipboardList },
 ];
 
 function NavItem({ icon: Icon, label, active, onClick }) {
@@ -148,51 +147,280 @@ function VerifiedMentorsList() {
   );
 }
 
+// ── SESSIONS TAB ─────────────────────────────────────────────────────────────
+function useCountdown(secondsInit) {
+  const [secs, setSecs] = useState(secondsInit);
+  useEffect(() => {
+    if (secs <= 0) return;
+    const t = setInterval(() => setSecs(s => s - 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const h = Math.floor(Math.abs(secs) / 3600);
+  const m = Math.floor((Math.abs(secs) % 3600) / 60);
+  const s = Math.abs(secs) % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return secs <= 0 ? 'Live Now' : `${h}h ${pad(m)}m ${pad(s)}s`;
+}
+
+function SessionCard({ session, onEnd, endingId }) {
+  const countdown = useCountdown(session.seconds_until_start);
+  const isLive = session.is_live || session.seconds_until_start <= 0;
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+  const token = localStorage.getItem('token');
+  const wsUrl = `${BASE_URL.replace(/^http/, 'ws')}/api/v1/mentorship/sessions/${session.session_id}/chat/?token=${token}`;
+
+  return (
+    <div className={`flex items-center gap-4 p-5 rounded-2xl border transition-colors ${isLive ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'}`}>
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${isLive ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+        <MessageSquare size={20} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-slate-800">{session.other_party_name}</p>
+        <p className="text-xs text-slate-500 font-medium mt-0.5">
+          {new Date(session.scheduled_at).toLocaleString()}
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        {isLive ? (
+          <div className="flex items-center gap-2">
+            <a
+              href={wsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-all"
+            >
+              Join Chat
+            </a>
+            <button
+              onClick={() => onEnd(session.session_id)}
+              disabled={endingId === session.session_id}
+              className="px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-600 transition-all disabled:opacity-50 flex items-center gap-1"
+            >
+              {endingId === session.session_id ? <Loader2 size={12} className="animate-spin" /> : <StopCircle size={12} />} End
+            </button>
+          </div>
+        ) : (
+          <span className="text-sm font-extrabold text-emerald-600 tabular-nums">{countdown}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SessionsTab({ toast }) {
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [endingId, setEndingId] = useState(null);
+
+  useEffect(() => {
+    getUpcomingSessions().then(setSessions).catch(console.error).finally(() => setLoading(false));
+  }, []);
+
+  async function handleEnd(sessionId) {
+    setEndingId(sessionId);
+    try {
+      await endSession(sessionId);
+      setSessions(prev => prev.filter(s => s.session_id !== sessionId));
+      toast('Session ended. Student redirected to feedback.', 'success');
+    } catch (err) {
+      toast(err.message || 'Failed to end session', 'error');
+    } finally {
+      setEndingId(null);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+        <h3 className="text-lg font-extrabold text-slate-800 mb-5 flex items-center gap-2">
+          <Clock size={18} className="text-emerald-500" /> Upcoming & Live Sessions
+        </h3>
+        {loading ? (
+          <div className="flex items-center gap-3 text-slate-400 py-6"><Loader2 size={18} className="animate-spin" /><span className="font-medium">Loading sessions...</span></div>
+        ) : sessions.length === 0 ? (
+          <div className="text-center py-10 text-slate-400">
+            <Clock size={40} className="mx-auto mb-3 opacity-30" />
+            <p className="font-semibold">No upcoming sessions.</p>
+            <p className="text-sm font-medium mt-1">Approve student requests to create sessions.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sessions.map(s => <SessionCard key={s.session_id} session={s} onEnd={handleEnd} endingId={endingId} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── REQUESTS TAB ──────────────────────────────────────────────────────────────
+function RequestsTab({ toast }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [approvingId, setApprovingId] = useState(null);
+
+  useEffect(() => {
+    getPendingRequests().then(setRequests).catch(console.error).finally(() => setLoading(false));
+  }, []);
+
+  async function handleApprove(requestId) {
+    setApprovingId(requestId);
+    try {
+      await approveRequest(requestId);
+      setRequests(prev => prev.filter(r => r.request_id !== requestId));
+      toast('Request approved! Session created.', 'success');
+    } catch (err) {
+      toast(err.message || 'Failed to approve request', 'error');
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl">
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+        <h3 className="text-lg font-extrabold text-slate-800 mb-5 flex items-center gap-2">
+          <Inbox size={18} className="text-emerald-500" /> Pending Student Requests
+        </h3>
+        {loading ? (
+          <div className="flex items-center gap-3 text-slate-400 py-6"><Loader2 size={18} className="animate-spin" /><span className="font-medium">Loading requests...</span></div>
+        ) : requests.length === 0 ? (
+          <div className="text-center py-10 text-slate-400">
+            <Inbox size={40} className="mx-auto mb-3 opacity-30" />
+            <p className="font-semibold">No pending requests.</p>
+            <p className="text-sm font-medium mt-1">Students who book your slots will appear here.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {requests.map(r => (
+              <div key={r.request_id} className="flex items-center gap-4 p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                <div className="w-10 h-10 rounded-full bg-amber-400 text-white font-extrabold text-sm flex items-center justify-center shrink-0">
+                  {r.student_name?.[0] || 'S'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-800 text-sm">{r.student_name}</p>
+                  <p className="text-xs text-slate-500 font-medium">{r.time_slot}</p>
+                </div>
+                <button
+                  onClick={() => handleApprove(r.request_id)}
+                  disabled={approvingId === r.request_id}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white font-bold text-sm rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 shrink-0"
+                >
+                  {approvingId === r.request_id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Approve
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── PROFILE TAB ───────────────────────────────────────────────────────────────
 function ProfileTab({ profileData, onProfileCreated, toast }) {
-  const [expertise, setExpertise] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [expertise, setExpertise] = useState(profileData?.expertise || '');
+  const [bio, setBio] = useState(profileData?.bio || '');
+  const [yearsExperience, setYearsExperience] = useState(profileData?.years_experience || 0);
+  const [loading, setLoading] = useState(true); // Set to true to indicate loading initially
 
-  async function handleCreate(e) {
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const data = await getMentorProfile(); // Fetch the profile
+        if (data) {
+          setExpertise(data.expertise || '');
+          setBio(data.bio || '');
+          setYearsExperience(data.years_experience || 0);
+          onProfileCreated(data); // Update parent state with fetched data
+        }
+      } catch (err) {
+        console.error("Error fetching mentor profile:", err);
+        // If there's an error fetching, it likely means no profile exists, so we don't pre-fill.
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProfile();
+  }, [onProfileCreated]); // Dependency on onProfileCreated
+
+  async function handleSave(e) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await createMentorProfile(expertise);
-      localStorage.setItem('harmony_mentor_id', res.mentor_id || '');
-      onProfileCreated({ expertise, is_verified: false, mentor_id: res.mentor_id });
-      toast('Profile submitted! Awaiting admin verification.', 'success');
+      const res = await upsertMentorProfile({ expertise, bio, years_experience: yearsExperience });
+      // Ensure local storage and parent state are updated with the latest info
+      onProfileCreated({ ...profileData, expertise, bio, years_experience: yearsExperience, is_verified: profileData?.is_verified || false, mentor_id: res.mentor_id || profileData?.mentor_id });
+      toast('Profile saved successfully!', 'success');
     } catch (err) {
-      toast(err.message || 'Failed to create profile', 'error');
+      toast(err.message || 'Failed to save profile', 'error');
     } finally {
       setLoading(false);
     }
   }
 
-  if (profileData) {
-    return (
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 max-w-xl"
-      >
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-lg">
-            <UserCheck size={30} className="text-white" />
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 max-w-xl"
+    >
+      <h3 className="text-xl font-extrabold text-slate-900 mb-2">
+        {profileData ? 'Manage Mentor Profile' : 'Create Mentor Profile'}
+      </h3>
+      <p className="text-slate-500 font-medium mb-6">
+        {profileData ? 'Update your expertise, bio, and experience.' : 'Tell students what you specialize in. Be specific — students search by skills.'}
+      </p>
+      {loading ? ( // Conditionally render loader
+        <div className="flex items-center justify-center py-10 gap-3 text-slate-500">
+          <Loader2 size={24} className="animate-spin text-emerald-500" />
+          <span className="font-semibold text-lg">Loading profile...</span>
+        </div>
+      ) : (
+        <form onSubmit={handleSave} className="space-y-5">
+          <div>
+            <label className="block text-sm font-bold text-slate-800 mb-2">Your Areas of Expertise</label>
+            <textarea
+              value={expertise}
+              onChange={e => setExpertise(e.target.value)}
+              placeholder="e.g., Software Engineering, Python, Machine Learning, System Design, Interview Prep"
+              rows={4}
+              required
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-400 shadow-sm resize-none"
+            />
+            <p className="text-xs text-slate-400 font-medium mt-1.5">Separate skills with commas</p>
           </div>
           <div>
-            <h3 className="text-xl font-extrabold text-slate-900">Mentor Profile</h3>
-            <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full mt-1 ${
-              profileData.is_verified
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                : 'bg-amber-50 text-amber-700 border border-amber-200'
-            }`}>
-              {profileData.is_verified ? <><CheckCircle2 size={12} /> Verified</> : <><Clock size={12} /> Awaiting Verification</>}
-            </span>
+            <label className="block text-sm font-bold text-slate-800 mb-2">Short Bio</label>
+            <textarea
+              value={bio}
+              onChange={e => setBio(e.target.value)}
+              placeholder="Tell students a bit about yourself and your mentoring style."
+              rows={3}
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-400 shadow-sm resize-none"
+            />
           </div>
-        </div>
-        <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Expertise</p>
-          <p className="text-slate-800 font-semibold">{profileData.expertise}</p>
-        </div>
-        {!profileData.is_verified && (
+          <div>
+            <label className="block text-sm font-bold text-slate-800 mb-2">Years of Experience</label>
+            <input
+              type="number"
+              value={yearsExperience}
+              onChange={e => setYearsExperience(parseInt(e.target.value) || 0)}
+              placeholder="e.g., 5"
+              min="0"
+              required
+              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-400 shadow-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading || !expertise.trim()}
+            className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold text-lg rounded-xl shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? <><Loader2 size={20} className="animate-spin" /> Saving...</> : <><UserCheck size={20} /> Save Changes</>}
+          </button>
+        </form>
+      )}
+
+      {profileData && !profileData.is_verified && (
           <div className="mt-5 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
             <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
             <p className="text-sm font-semibold text-amber-700">
@@ -200,37 +428,6 @@ function ProfileTab({ profileData, onProfileCreated, toast }) {
             </p>
           </div>
         )}
-      </motion.div>
-    );
-  }
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 max-w-xl"
-    >
-      <h3 className="text-xl font-extrabold text-slate-900 mb-2">Create Mentor Profile</h3>
-      <p className="text-slate-500 font-medium mb-6">Tell students what you specialize in. Be specific — students search by skills.</p>
-      <form onSubmit={handleCreate} className="space-y-5">
-        <div>
-          <label className="block text-sm font-bold text-slate-800 mb-2">Your Areas of Expertise</label>
-          <textarea
-            value={expertise}
-            onChange={e => setExpertise(e.target.value)}
-            placeholder="e.g., Software Engineering, Python, Machine Learning, System Design, Interview Prep"
-            rows={4}
-            required
-            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-400 shadow-sm resize-none"
-          />
-          <p className="text-xs text-slate-400 font-medium mt-1.5">Separate skills with commas</p>
-        </div>
-        <button
-          type="submit"
-          disabled={loading || !expertise.trim()}
-          className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold text-lg rounded-xl shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? <><Loader2 size={20} className="animate-spin" /> Creating...</> : <><UserCheck size={20} /> Submit Profile</>}
-        </button>
-      </form>
     </motion.div>
   );
 }
@@ -255,8 +452,10 @@ function AvailabilityTab({ mentorId, profileData, toast }) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await setAvailability(form);
-      setSlots(prev => [...prev, { ...form, id: res?.id || Date.now(), ...res }]);
+      // Backend expects day_of_week 1–7 (1=Mon), but form stores 0-indexed
+      const slot = { ...form, day_of_week: form.day_of_week + 1 };
+      const res = await setAvailability([slot]);
+      setSlots(prev => [...prev, { ...form, id: res?.id || Date.now() }]);
       setAdding(false);
       toast('Availability slot added!', 'success');
     } catch (err) {
@@ -463,29 +662,68 @@ function FeedbackTab({ toast }) {
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export default function MentorDashboard() {
   const navigate = useNavigate();
+  
+  // 1. GATEKEEPER: Check role before doing ANYTHING
+  const user = getCurrentUser();
   const name = getUserDisplayName();
+  const isMentor = localStorage.getItem('role') === 'mentor';
+
   const [activeTab, setActiveTab] = useState('overview');
   const [profileData, setProfileData] = useState(null);
   const [slots, setSlots] = useState([]);
   const [toast, setToast] = useState(null);
+  const [isAuthorized, setIsAuthorized] = useState(true);
 
   const mentorId = localStorage.getItem('harmony_mentor_id') || '';
 
   useEffect(() => {
-    if (mentorId) {
-      getMentorAvailability(mentorId).then(setSlots).catch(() => {});
+    // 2. REDIRECT: If not a mentor, stop them immediately
+    if (!isMentor) {
+      console.warn("Unauthorized access attempt to Mentor Dashboard");
+      setIsAuthorized(false);
+      // Redirect to their correct home after 2 seconds
+      const timer = setTimeout(() => {
+        navigate(localStorage.getItem('role') === 'parent' ? '/parent-dashboard' : '/dashboard');
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+
+    // 3. SECURE FETCH: Only fetch if authorized
+    if (mentorId && isMentor) {
+      mentorshipApi.getMentorAvailability(mentorId).then(setSlots).catch(() => {});
       setProfileData(JSON.parse(localStorage.getItem('harmony_mentor_profile') || 'null'));
     }
-  }, [mentorId]);
+  }, [mentorId, isMentor, navigate]);
+
+  // 4. UNAUTHORIZED UI: Show a friendly error instead of a white screen
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-6">
+          <AlertCircle size={40} />
+        </div>
+        <h1 className="text-2xl font-extrabold text-slate-900 mb-2">Access Denied</h1>
+        <p className="text-slate-500 font-medium max-w-md">
+          You are currently logged in as a <b>{localStorage.getItem('role')}</b>. 
+          Only verified Mentors can access this area.
+        </p>
+        <p className="text-slate-400 text-sm mt-4 italic">Redirecting you to your dashboard...</p>
+        <button 
+          onClick={() => navigate('/')}
+          className="mt-8 px-8 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg"
+        >
+          Go Home Now
+        </button>
+      </div>
+    );
+  }
 
   function showToast(message, type) {
     setToast({ message, type });
   }
 
   function handleLogout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userId');
+    clearUserSession();
     navigate('/');
   }
 
@@ -544,6 +782,8 @@ export default function MentorDashboard() {
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
             {activeTab === 'overview'     && <OverviewTab profileData={profileData} slots={slots} />}
+            {activeTab === 'sessions'     && <SessionsTab toast={showToast} />}
+            {activeTab === 'requests'     && <RequestsTab toast={showToast} />}
             {activeTab === 'profile'      && <ProfileTab profileData={profileData} onProfileCreated={handleProfileCreated} toast={showToast} />}
             {activeTab === 'availability' && <AvailabilityTab mentorId={mentorId} profileData={profileData} toast={showToast} />}
             {activeTab === 'feedback'     && <FeedbackTab toast={showToast} />}
