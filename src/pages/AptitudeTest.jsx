@@ -1,320 +1,346 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Zap, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CheckCircle2, ArrowLeft, Loader2, Zap } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+
+import { apiClient } from '../services/api/apiClient';
 import { getAptitudePool, submitAssessment } from '../services/api/assessmentApi';
-import { getCurrentUser } from '../utils/jwt';
+import { getCurrentUser } from '../utils/jwt'; // FIXED: Changed getUserId to getCurrentUser
 
-// Fallback questions when backend pool is empty
-const FALLBACK_QUESTIONS = [
-  { id: 'q1', category: 'Quantitative', difficulty: 'Easy', text: 'If a train travels 120 km in 2 hours, what is its average speed?', options: ['40 km/h', '60 km/h', '80 km/h', '100 km/h'], answer: 1 },
-  { id: 'q2', category: 'Quantitative', difficulty: 'Easy', text: 'What is 15% of 200?', options: ['20', '25', '30', '35'], answer: 2 },
-  { id: 'q3', category: 'Quantitative', difficulty: 'Medium', text: 'A shopkeeper sells an item at 20% profit. If the cost price is ₹500, what is the selling price?', options: ['₹550', '₹580', '₹600', '₹620'], answer: 2 },
-  { id: 'q4', category: 'Quantitative', difficulty: 'Medium', text: 'If x + y = 10 and x - y = 4, what is the value of x?', options: ['5', '6', '7', '8'], answer: 2 },
-  { id: 'q5', category: 'Quantitative', difficulty: 'Hard', text: 'A pipe fills a tank in 6 hours, another empties it in 10 hours. If both are open, how long to fill the tank?', options: ['12 hrs', '15 hrs', '16 hrs', '18 hrs'], answer: 1 },
-  { id: 'q6', category: 'Logical', difficulty: 'Easy', text: 'Complete the series: 2, 4, 8, 16, __?', options: ['24', '28', '32', '36'], answer: 2 },
-  { id: 'q7', category: 'Logical', difficulty: 'Easy', text: 'If all cats are animals, and all animals need water, then:', options: ['Only some cats need water', 'All cats need water', 'No cats need water', 'It cannot be determined'], answer: 1 },
-  { id: 'q8', category: 'Logical', difficulty: 'Medium', text: 'BOOK is to LIBRARY as PAINTING is to:', options: ['Artist', 'Canvas', 'Museum', 'Gallery'], answer: 2 },
-  { id: 'q9', category: 'Logical', difficulty: 'Medium', text: 'Find the odd one out: Triangle, Circle, Cube, Square', options: ['Triangle', 'Circle', 'Cube', 'Square'], answer: 2 },
-  { id: 'q10', category: 'Logical', difficulty: 'Hard', text: 'If MANGO = 13, APPLE = 11, then GRAPE = ?', options: ['9', '10', '11', '12'], answer: 0 },
-  { id: 'q11', category: 'Verbal', difficulty: 'Easy', text: 'Choose the word most opposite in meaning to "BENEVOLENT":', options: ['Kind', 'Malevolent', 'Generous', 'Charitable'], answer: 1 },
-  { id: 'q12', category: 'Verbal', difficulty: 'Easy', text: 'Fill in the blank: "She spoke with great _____ and convinced everyone."', options: ['Eloquence', 'Silence', 'Confusion', 'Hesitation'], answer: 0 },
-  { id: 'q13', category: 'Verbal', difficulty: 'Medium', text: 'Choose the correctly spelled word:', options: ['Accomodation', 'Accommodation', 'Acommodation', 'Acomodation'], answer: 1 },
-  { id: 'q14', category: 'Verbal', difficulty: 'Medium', text: 'Identify the sentence with correct grammar: ', options: ['He don\'t know the answer', 'He doesn\'t knows the answer', 'He doesn\'t know the answer', 'He not know the answer'], answer: 2 },
-  { id: 'q15', category: 'Verbal', difficulty: 'Hard', text: 'What is the meaning of "Ephemeral"?', options: ['Lasting forever', 'Lasting for a very short time', 'Very important', 'Very common'], answer: 1 },
-];
+// ─── Result Screen ────────────────────────────────────────────────────────────
 
-const CATEGORY_COLORS = {
-  Quantitative: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', gradient: 'from-blue-500 to-sky-400' },
-  Logical: { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', gradient: 'from-violet-500 to-purple-400' },
-  Verbal: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', gradient: 'from-emerald-500 to-teal-400' },
-};
+function ScoreCard({ label, value, max, color, bgColor, icon: Icon }) {
+  const pct = Math.min(Math.round((value / max) * 100), 100);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`${bgColor} rounded-2xl p-6 border`}
+    >
+      <div className="flex items-center gap-3 mb-4">
+        <div className={`w-10 h-10 ${color} rounded-xl flex items-center justify-center`}>
+          <Icon size={18} className="text-white" />
+        </div>
+        <div>
+          <p className="font-extrabold text-slate-800 text-sm">{label}</p>
+          <p className="text-2xl font-black text-slate-900">{value}<span className="text-sm font-semibold text-slate-400">/{max}</span></p>
+        </div>
+      </div>
+      <div className="w-full h-2.5 bg-white/70 rounded-full overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.9, ease: 'easeOut' }}
+          className={`h-full ${color} rounded-full`}
+        />
+      </div>
+      <p className="text-xs font-bold text-slate-500 mt-1.5 text-right">{pct}%</p>
+    </motion.div>
+  );
+}
+
+function AptitudeResultScreen({ aptiData }) {
+  const navigate = useNavigate();
+
+  const q = aptiData?.quantitative ?? 0;
+  const l = aptiData?.logical ?? 0;
+  const v = aptiData?.verbal ?? 0;
+  const max = aptiData?.max_score ?? 15;
+  const total = q + l + v;
+  const totalMax = max * 3;
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="w-full max-w-2xl"
+      >
+        <div className="flex items-center justify-center mb-8">
+          <div className="flex items-center gap-3 px-5 py-2.5 bg-emerald-50 border border-emerald-200 rounded-full">
+            <CheckCircle2 size={20} className="text-emerald-500" />
+            <span className="font-bold text-emerald-700 text-sm">Aptitude Test Completed</span>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-lg overflow-hidden">
+          <div className="bg-gradient-to-br from-blue-600 to-sky-400 p-8 text-white">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                  <Zap size={24} className="text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-extrabold">Your Aptitude Results</h1>
+                  <p className="text-white/70 text-sm">Your scores have been recorded in your profile.</p>
+                </div>
+              </div>
+              <div className="text-right hidden sm:block">
+                <p className="text-white/60 text-sm font-semibold">Total Score</p>
+                <p className="text-4xl font-black">{total}<span className="text-lg font-semibold text-white/60">/{totalMax}</span></p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-8">
+            <h2 className="font-extrabold text-slate-800 mb-5 text-lg">Score Breakdown</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+              <ScoreCard label="Quantitative" value={q} max={max} color="bg-blue-500" bgColor="bg-blue-50 border-blue-100" icon={Zap} />
+              <ScoreCard label="Logical" value={l} max={max} color="bg-violet-500" bgColor="bg-violet-50 border-violet-100" icon={Zap} />
+              <ScoreCard label="Verbal" value={v} max={max} color="bg-emerald-500" bgColor="bg-emerald-50 border-emerald-100" icon={Zap} />
+            </div>
+
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="flex-1 min-w-[200px] flex items-center justify-center gap-2 px-6 py-4 bg-blue-600 text-white font-extrabold rounded-2xl hover:bg-blue-700 transition-all active:scale-95 shadow-lg shadow-blue-200"
+              >
+                Back to Dashboard
+              </button>
+              <button
+                onClick={() => navigate('/career-recommendations')}
+                className="flex-1 min-w-[200px] flex items-center justify-center gap-2 px-6 py-4 bg-slate-100 text-slate-700 font-extrabold rounded-2xl hover:bg-slate-200 transition-all active:scale-95"
+              >
+                View Career Matches →
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── UI Helpers ────────────────────────────────────────────────────────────────
+
+function OptionButton({ text, selected, onClick }) {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
+      onClick={onClick}
+      className={`w-full text-left p-4 rounded-2xl border-2 font-medium transition-all duration-200 ${
+        selected
+          ? 'border-blue-500 bg-blue-50 text-blue-800'
+          : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40'
+      }`}
+    >
+      {text}
+    </motion.button>
+  );
+}
+
+function CategoryBadge({ category }) {
+  const map = {
+    quantitative: { label: 'Quantitative', cls: 'bg-blue-100 text-blue-700' },
+    logical: { label: 'Logical', cls: 'bg-violet-100 text-violet-700' },
+    verbal: { label: 'Verbal', cls: 'bg-emerald-100 text-emerald-700' },
+  };
+  const { label, cls } = map[category?.toLowerCase()] ?? { label: category, cls: 'bg-slate-100 text-slate-700' };
+  return <span className={`px-3 py-1 rounded-full text-xs font-bold ${cls}`}>{label}</span>;
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AptitudeTest() {
   const navigate = useNavigate();
-  const user = getCurrentUser();
+  const user = getCurrentUser(); // FIXED: Using user object
+  const userId = user?.userId;
+
+  const [status, setStatus] = useState('loading'); 
+  const [aptiData, setAptiData] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
-  const [current, setCurrent] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-  const [results, setResults] = useState(null);
-  const [usingFallback, setUsingFallback] = useState(false);
-
-  // Get grade from localStorage profile answers
-  const grade = (() => {
-    try {
-      const savedGrade = localStorage.getItem('harmony_student_grade');
-      if (savedGrade) {
-        // This extracts just the number. So "12th" becomes "12", "9th" becomes "9"
-        const match = savedGrade.match(/\d+/); 
-        return match ? match[0] : '10'; 
-      }
-      return '10'; // Fallback if they somehow skipped the profile
-    } catch { 
-      return '10'; 
-    }
-  })();
+  const [targetGrade, setTargetGrade] = useState('10');
 
   useEffect(() => {
-    console.log(`Fetching aptitude pool for grade: ${grade}`);
-    
-    getAptitudePool(grade)
-      .then(data => {
-        console.log("✅ RAW BACKEND RESPONSE:", data); // Let's see exactly what the backend sent!
+    async function init() {
+      try {
+        const me = await apiClient.get('/api/v1/auth/users/me');
 
-        // Handle different possible backend JSON shapes
-        let backendQuestions = [];
-        if (Array.isArray(data)) {
-          backendQuestions = data; // If backend returns a direct array
-        } else if (data.questions) {
-          backendQuestions = data.questions; 
-        } else if (data.pool) {
-          backendQuestions = data.pool; // Common AI backend key
-        } else if (data.data) {
-          backendQuestions = data.data; 
+        if (me.progress?.aptitude_done) {
+          setAptiData(me.apti_data ?? {});
+          setStatus('completed');
+          localStorage.setItem('harmony_aptitude_done', 'true');
+          return;
         }
 
-        if (backendQuestions && backendQuestions.length > 0) {
-          console.log("Loaded questions from backend successfully!");
-          
-          // Optional: Verify the first question has the keys React expects
-          console.log("Sample backend question structure:", backendQuestions[0]);
-          
-          setQuestions(backendQuestions);
-          setUsingFallback(false);
-        } else {
-          console.warn("Backend responded, but no questions array was found. Using fallback.");
-          setQuestions(FALLBACK_QUESTIONS);
-          setUsingFallback(true);
-        }
-      })
-      .catch((error) => {
-        console.error("❌ API CALL FAILED:", error);
-        setQuestions(FALLBACK_QUESTIONS);
-        setUsingFallback(true);
-      })
-      .finally(() => setLoading(false));
+        const grade = me?.profile?.grade ?? me?.basic_info?.grade ?? localStorage.getItem('harmony_target_grade') ?? '10';
+        setTargetGrade(grade);
+
+        const pool = await getAptitudePool(grade);
+        setQuestions(pool?.questions ?? pool ?? []);
+        setStatus('testing');
+      } catch (err) {
+        console.error('AptitudeTest init error:', err);
+        toast.error('Failed to load test. Please try again.');
+        setStatus('testing');
+      }
+    }
+    init();
   }, []);
 
-  function computeScores() {
-    const cats = { Quantitative: { correct: 0, total: 0 }, Logical: { correct: 0, total: 0 }, Verbal: { correct: 0, total: 0 } };
-    questions.forEach(q => {
-      const cat = q.category || 'Logical';
-      if (!cats[cat]) return;
-      cats[cat].total++;
-      if (usingFallback) {
-        // For fallback, check against stored answers vs correct answer index
-        if (answers[q.id] === q.answer) cats[cat].correct++;
-      } else {
-        // Backend questions may have a different structure; treat any answer as attempted
-        if (answers[q.id] !== undefined) cats[cat].correct += 0.7; // Assume 70% for attempted
-      }
-    });
-    return {
-      quantitative: cats.Quantitative.total ? Math.round((cats.Quantitative.correct / cats.Quantitative.total) * 100) : 50,
-      logical: cats.Logical.total ? Math.round((cats.Logical.correct / cats.Logical.total) * 100) : 50,
-      verbal: cats.Verbal.total ? Math.round((cats.Verbal.correct / cats.Verbal.total) * 100) : 50,
-    };
-  }
+  const currentQuestion = questions[currentIndex];
+  const totalQuestions = questions.length;
+  const progress = totalQuestions > 0 ? Math.round(((currentIndex + 1) / totalQuestions) * 100) : 0;
+  const allAnswered = totalQuestions > 0 && Object.keys(answers).length === totalQuestions;
 
-  async function handleSubmit() {
-    const scores = computeScores();
+  const handleAnswer = (questionId, optionValue) => {
+    setAnswers(prev => ({ ...prev, [questionId]: optionValue }));
+  };
+
+  const handleNext = () => {
+    if (currentIndex < totalQuestions - 1) setCurrentIndex(i => i + 1);
+  };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) setCurrentIndex(i => i - 1);
+  };
+
+  const handleSubmit = async () => {
+    if (!allAnswered) {
+      toast.error('Please answer all questions before submitting.');
+      return;
+    }
     setSubmitting(true);
     try {
-      if (user?.userId) {
-        await submitAssessment({ userId: user.userId, moduleKey: 'aptitude', payload: { answers, scores } });
-      }
-      localStorage.setItem('harmony_aptitude_done', 'true');
-      localStorage.setItem('harmony_aptitude_scores', JSON.stringify(scores));
-      setResults(scores);
-      setDone(true);
-    } catch (e) {
-      console.error(e);
-      localStorage.setItem('harmony_aptitude_done', 'true');
-      localStorage.setItem('harmony_aptitude_scores', JSON.stringify(scores));
-      setResults(scores);
-      setDone(true);
+      await submitAssessment({
+        userId,
+        moduleKey: 'aptitude',
+        payload: { answers, target_grade: targetGrade },
+      });
+      
+      localStorage.setItem('harmony_aptitude_done', 'true'); // FIXED: Sync Dashboard status
+      toast.success('Aptitude test submitted!');
+      
+      const me = await apiClient.get('/api/v1/auth/users/me');
+      setAptiData(me.apti_data ?? {});
+      setStatus('completed');
+    } catch (err) {
+      console.error('Submit error:', err);
+      toast.error('Submission failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  }
+  };
 
-  if (loading) {
+  if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center gap-3 font-sans">
-        <Loader2 size={28} className="animate-spin text-blue-500" />
-        <span className="font-semibold text-slate-600 text-lg">Generating your test...</span>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 size={40} className="animate-spin text-blue-500" />
+          <p className="text-slate-500 font-semibold">Checking your progress...</p>
+        </div>
       </div>
     );
   }
 
-  if (done && results) {
-    const overall = Math.round((results.quantitative + results.logical + results.verbal) / 3);
+  if (status === 'completed') {
+    return <AptitudeResultScreen aptiData={aptiData} />;
+  }
+
+  if (questions.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans p-6">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-3xl shadow-xl p-10 max-w-2xl w-full"
-        >
-          <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-5">
-              <Zap size={40} className="text-blue-500" />
-            </div>
-            <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Aptitude Assessed!</h2>
-            <p className="text-slate-500 font-medium">Here are your scores across the three aptitude dimensions.</p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            {[
-              { label: 'Quantitative', value: results.quantitative, ...CATEGORY_COLORS.Quantitative },
-              { label: 'Logical', value: results.logical, ...CATEGORY_COLORS.Logical },
-              { label: 'Verbal', value: results.verbal, ...CATEGORY_COLORS.Verbal },
-            ].map(item => (
-              <div key={item.label} className={`${item.bg} ${item.border} border rounded-2xl p-5 text-center`}>
-                <div className={`text-3xl font-extrabold ${item.text} mb-1`}>{item.value}%</div>
-                <div className={`text-xs font-bold ${item.text}`}>{item.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-gradient-to-r from-blue-600 to-sky-400 rounded-2xl p-6 text-white text-center mb-8">
-            <div className="text-4xl font-extrabold mb-1">{overall}%</div>
-            <div className="text-blue-100 font-semibold">Overall Aptitude Score</div>
-          </div>
-
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-sky-500 text-white font-bold text-lg rounded-xl shadow-lg hover:-translate-y-0.5 transition-all"
-          >
-            Continue to Career Path →
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
+        <div className="text-center">
+          <p className="text-slate-500 font-semibold mb-4">No questions available.</p>
+          <button onClick={() => navigate('/dashboard')} className="px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl">
+            Back to Dashboard
           </button>
-        </motion.div>
+        </div>
       </div>
     );
   }
-
-  const q = questions[current];
-  if (!q) return null;
-  const catColors = CATEGORY_COLORS[q.category] || CATEGORY_COLORS.Logical;
-  const progress = Math.round((current / questions.length) * 100);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-semibold">
-          <ArrowLeft size={18} /> Exit
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-semibold transition-colors">
+          <ArrowLeft size={18} /> Dashboard
         </button>
-        <div className="flex items-center gap-2">
-          <Zap size={20} className="text-blue-500" />
-          <span className="text-lg font-extrabold text-slate-800">Aptitude Assessment</span>
+        <div className="flex items-center gap-3">
+          {currentQuestion?.category && <CategoryBadge category={currentQuestion.category} />}
+          <span className="text-sm font-bold text-slate-500">{currentIndex + 1} / {totalQuestions}</span>
+          <div className="w-32 h-2 bg-slate-100 rounded-full overflow-hidden">
+            <motion.div animate={{ width: `${progress}%` }} className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full" />
+          </div>
         </div>
-        <div className="text-sm font-bold text-slate-400">{current + 1} / {questions.length}</div>
       </div>
 
-      {/* Progress */}
-      <div className="bg-white border-b border-slate-100 px-6 py-3">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex justify-between text-xs font-bold text-slate-500 mb-1.5">
-            <span>Question {current + 1} of {questions.length}</span>
-            <span>{progress}% done</span>
-          </div>
-          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-2xl">
+          <AnimatePresence mode="wait">
             <motion.div
-              animate={{ width: `${progress}%` }}
-              className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full"
-            />
-          </div>
+              key={currentIndex}
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -30 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mb-6">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Zap size={16} className="text-blue-600" />
+                  </div>
+                  <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">Aptitude</span>
+                  {currentQuestion?.difficulty && (
+                    <span className={`ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      currentQuestion.difficulty === 'hard' ? 'bg-red-100 text-red-600' :
+                      currentQuestion.difficulty === 'medium' ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'
+                    }`}>
+                      {currentQuestion.difficulty}
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-xl font-extrabold text-slate-900 mb-8 leading-relaxed">
+                  {currentQuestion?.question_text ?? currentQuestion?.text ?? currentQuestion?.question ?? ''}
+                </h2>
+                <div className="space-y-3">
+                  {(currentQuestion?.options ?? []).map((opt, i) => {
+                    const optValue = typeof opt === 'string' ? opt : opt.value ?? opt.text ?? opt.label;
+                    const optLabel = typeof opt === 'string' ? opt : opt.text ?? opt.label ?? opt.value;
+                    const qId = currentQuestion?.id ?? currentIndex;
+                    return (
+                      <OptionButton key={i} text={optLabel} selected={answers[qId] === optValue} onClick={() => handleAnswer(qId, optValue)} />
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <button onClick={handlePrev} disabled={currentIndex === 0} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-600 font-semibold rounded-2xl disabled:opacity-40 hover:bg-slate-50 transition-colors">
+                  <ArrowLeft size={16} /> Previous
+                </button>
+
+                {currentIndex < totalQuestions - 1 ? (
+                  <button onClick={handleNext} disabled={!answers[currentQuestion?.id ?? currentIndex]} className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-extrabold rounded-2xl disabled:opacity-40 hover:bg-blue-700 transition-colors">
+                    Next →
+                  </button>
+                ) : (
+                  <button onClick={handleSubmit} disabled={!allAnswered || submitting} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 text-white font-extrabold rounded-2xl disabled:opacity-40 hover:bg-emerald-600 transition-colors">
+                    {submitting ? <><Loader2 size={16} className="animate-spin" /> Submitting...</> : '✅ Submit Test'}
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-10">
-        {usingFallback && (
-          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 mb-6">
-            <AlertCircle size={18} className="text-amber-500 shrink-0" />
-            <p className="text-sm font-semibold text-amber-700">Using practice questions while the full question bank is being populated.</p>
-          </div>
-        )}
-
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={current}
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -40 }}
-            transition={{ duration: 0.25 }}
-          >
-            {/* Category + Difficulty */}
-            <div className="flex items-center gap-3 mb-6">
-              <span className={`px-4 py-1.5 rounded-full text-xs font-bold ${catColors.bg} ${catColors.text} ${catColors.border} border`}>
-                {q.category}
-              </span>
-              <span className={`px-4 py-1.5 rounded-full text-xs font-bold ${
-                q.difficulty === 'Easy' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                q.difficulty === 'Medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                'bg-rose-50 text-rose-700 border-rose-200'
-              } border`}>
-                {q.difficulty}
-              </span>
-            </div>
-
-            {/* Question */}
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mb-6">
-              <p className="text-xl font-bold text-slate-900 leading-relaxed">{q.text}</p>
-            </div>
-
-            {/* Options */}
-            <div className="space-y-3">
-              {(q.options || []).map((option, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setAnswers(prev => ({ ...prev, [q.id]: idx }))}
-                  className={`w-full text-left p-5 rounded-2xl border-2 font-semibold transition-all ${
-                    answers[q.id] === idx
-                      ? `bg-gradient-to-r ${catColors.gradient} text-white border-transparent shadow-lg scale-[1.01]`
-                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className={`inline-block w-8 h-8 rounded-full text-sm font-extrabold mr-3 text-center leading-8 ${
-                    answers[q.id] === idx ? 'bg-white/20' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {String.fromCharCode(65 + idx)}
-                  </span>
-                  {option}
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Navigation */}
-        <div className="flex gap-4 mt-8">
-          {current > 0 && (
-            <button onClick={() => setCurrent(c => c - 1)} className="flex items-center gap-2 px-6 py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all shadow-sm">
-              <ArrowLeft size={18} /> Back
-            </button>
-          )}
-          {current < questions.length - 1 ? (
-            <button
-              onClick={() => setCurrent(c => c + 1)}
-              disabled={answers[q.id] === undefined}
-              className={`flex-1 flex items-center justify-center gap-2 py-3.5 font-bold text-lg rounded-xl shadow-lg text-white bg-gradient-to-r ${catColors.gradient} hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              Next <ArrowRight size={20} />
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-2 py-3.5 font-bold text-lg rounded-xl shadow-lg bg-gradient-to-r from-emerald-500 to-teal-400 text-white hover:-translate-y-0.5 transition-all disabled:opacity-50"
-            >
-              {submitting ? <><Loader2 size={20} className="animate-spin" /> Scoring...</> : <><CheckCircle2 size={20} /> Submit Test</>}
-            </button>
-          )}
-        </div>
+      <div className="bg-white border-t border-slate-100 p-4 flex justify-center gap-1.5 flex-wrap">
+        {questions.map((q, i) => (
+          <button
+            key={i}
+            onClick={() => setCurrentIndex(i)}
+            className={`w-2.5 h-2.5 rounded-full transition-all ${
+              i === currentIndex ? 'bg-blue-600 scale-125' : answers[q?.id ?? i] ? 'bg-emerald-400' : 'bg-slate-200'
+            }`}
+          />
+        ))}
       </div>
     </div>
   );

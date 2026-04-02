@@ -1,54 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Map, Video, Settings, LogOut,
   Bell, User, Brain, Zap, Sparkles, ChevronRight, CheckCircle2,
-  Lock, ArrowRight, Target,Users, UserCheck,
-  Loader2
+  Lock, ArrowRight, Target, Users, UserCheck, Loader2, TrendingUp
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
 import { getUserDisplayName, clearUserSession } from '../utils/jwt';
+import { getSelectedCareer } from '../services/api/careerApi';
+import { roadmapApi } from '../services/api/roadmapApi';
+import { parentStudentApi } from '../services/api/parentStudentApi';
+import { mentorshipApi } from '../services/api/mentorshipApi';
+import { apiClient } from '../services/api/apiClient';
+
 import confetti from 'canvas-confetti';
+import { toast } from 'react-hot-toast';
 import { SplitText, BlurText, ShinyOverlay } from '../components/ui/Animations';
 
 // ============================================================================
 // HELPER HOOKS & COMPONENTS
 // ============================================================================
-function useProgress() {
-  const [progress, setProgress] = useState({
-    profileDone: localStorage.getItem('harmony_profile_done') === 'true',
-    personalityDone: localStorage.getItem('harmony_personality_done') === 'true',
-    aptitudeDone: localStorage.getItem('harmony_aptitude_done') === 'true',
-    assessmentsDone: false,
-    selectedCareer: null,
-  });
 
-  useEffect(() => {
-    // 1. Sync synchronous local storage items
-    const career = (() => { try { return JSON.parse(localStorage.getItem('harmony_selected_career')); } catch { return null; } })();
-    
-    // 2. Add an API call here to fetch the user's actual DB status
-    // Example: apiClient.get('/api/v1/profiles/me').then(data => { ... })
-    // For now, we will safely update the assessments check based on existing storage
-    setProgress(prev => ({
-      ...prev,
-      assessmentsDone: prev.personalityDone && prev.aptitudeDone,
-      selectedCareer: career
-    }));
+function useUserProgress() {
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
+  const fetchUserData = useCallback(async () => {
+    try {
+      const response = await apiClient.get('/api/v1/auth/users/me');
+      setUserData(response);
+    } catch (error) {
+      console.error('Failed to fetch user data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return progress;
+  useEffect(() => {
+    fetchUserData();
+  }, [fetchUserData]);
+
+  const progress = {
+    profileDone: userData?.progress?.profile_done ?? false,
+    personalityDone: userData?.progress?.personality_done ?? false,
+    aptitudeDone: userData?.progress?.aptitude_done ?? false,
+    assessmentsDone:
+      (userData?.progress?.personality_done ?? false) &&
+      (userData?.progress?.aptitude_done ?? false),
+    personalityData: userData?.personality_data ?? null,
+    aptiData: userData?.apti_data ?? null,
+  };
+
+  return { progress, loading, refetch: fetchUserData };
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
   return (
-    <button onClick={onClick} className={`group flex items-center w-full px-4 py-3 rounded-xl transition-all duration-300 font-semibold text-left ${
-      active 
-        ? 'bg-blue-50 text-blue-600' 
-        : 'text-slate-500 hover:bg-blue-50/50 hover:text-blue-600 hover:translate-x-1'
-    }`}>
-      <Icon size={20} className={`mr-3 shrink-0 transition-transform duration-300 ${!active && 'group-hover:scale-110'}`} /> 
+    <button
+      onClick={onClick}
+      className={`group flex items-center w-full px-4 py-3 rounded-xl transition-all duration-300 font-semibold text-left ${
+        active
+          ? 'bg-blue-50 text-blue-600'
+          : 'text-slate-500 hover:bg-blue-50/50 hover:text-blue-600 hover:translate-x-1'
+      }`}
+    >
+      <Icon size={20} className={`mr-3 shrink-0 transition-transform duration-300 ${!active && 'group-hover:scale-110'}`} />
       {label}
     </button>
   );
@@ -58,8 +75,8 @@ function PhaseStep({ number, label, status, color }) {
   return (
     <div className="flex flex-col items-center gap-1.5 hover:scale-105 transition-transform duration-300 cursor-default">
       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-sm border-2 transition-all duration-300 ${
-        status === 'done'    ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30' :
-        status === 'active'  ? `${color} border-transparent text-white shadow-lg scale-110` :
+        status === 'done'   ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30' :
+        status === 'active' ? `${color} border-transparent text-white shadow-lg scale-110` :
         'bg-slate-100 border-slate-200 text-slate-400'
       }`}>
         {status === 'done' ? <CheckCircle2 size={18} /> : status === 'locked' ? <Lock size={14} /> : number}
@@ -71,90 +88,160 @@ function PhaseStep({ number, label, status, color }) {
   );
 }
 
+// Score bar for aptitude display
+function ScoreBar({ label, value, max = 100, color = 'bg-blue-500' }) {
+  const pct = Math.round((value / max) * 100);
+  return (
+    <div className="mb-2">
+      <div className="flex justify-between text-xs font-semibold mb-1">
+        <span className="text-slate-600">{label}</span>
+        <span className="text-slate-800">{value}/{max}</span>
+      </div>
+      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
+          className={`h-full ${color} rounded-full`}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Completed test card for personality
+function PersonalityCompletedCard({ personalityData }) {
+  const dominantTraits = personalityData?.dominant_traits ?? [];
+  return (
+    <div className="flex-1 bg-white rounded-3xl border border-emerald-200 p-6 shadow-sm">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100">
+          <Brain size={20} className="text-emerald-600" />
+        </div>
+        <div className="flex-1">
+          <p className="font-extrabold text-sm text-slate-800">Personality Test</p>
+          <p className="text-xs text-emerald-600 font-bold">✅ Completed</p>
+        </div>
+        <CheckCircle2 size={20} className="text-emerald-500" />
+      </div>
+      {dominantTraits.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {dominantTraits.slice(0, 3).map((trait, i) => (
+            <span key={i} className="px-2 py-0.5 bg-violet-50 text-violet-700 text-xs font-bold rounded-full border border-violet-200">
+              {trait}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Completed test card for aptitude
+function AptitudeCompletedCard({ aptiData }) {
+  const q = aptiData?.quantitative ?? 0;
+  const l = aptiData?.logical ?? 0;
+  const v = aptiData?.verbal ?? 0;
+  const max = aptiData?.max_score ?? 15;
+  return (
+    <div className="flex-1 bg-white rounded-3xl border border-emerald-200 p-6 shadow-sm">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100">
+          <Zap size={20} className="text-emerald-600" />
+        </div>
+        <div className="flex-1">
+          <p className="font-extrabold text-sm text-slate-800">Aptitude Test</p>
+          <p className="text-xs text-emerald-600 font-bold">✅ Completed</p>
+        </div>
+        <CheckCircle2 size={20} className="text-emerald-500" />
+      </div>
+      <div className="mt-1">
+        <ScoreBar label="Quantitative" value={q} max={max} color="bg-blue-400" />
+        <ScoreBar label="Logical" value={l} max={max} color="bg-violet-400" />
+        <ScoreBar label="Verbal" value={v} max={max} color="bg-emerald-400" />
+      </div>
+    </div>
+  );
+}
+
+function ActiveRoadmap() {
+  const navigate = useNavigate();
+  return (
+    <div className="relative z-10 flex items-center justify-between">
+      <div>
+        <h4 className="text-xl font-bold text-white mb-2">Roadmap is Active</h4>
+        <p className="text-white/70 text-sm">You are currently tracking this career path.</p>
+        <button
+          onClick={() => navigate('/roadmap')}
+          className="mt-4 px-6 py-2 bg-white text-emerald-600 font-bold rounded-xl text-sm"
+        >
+          View Roadmap
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // MAIN DASHBOARD COMPONENT
 // ============================================================================
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const name = getUserDisplayName();
-  const progress = useProgress();
+
+  const { progress, loading, refetch } = useUserProgress();
 
   const [inviteCode, setInviteCode] = useState(null);
-  const [roadmapStatus, setRoadmapStatus] = useState('overview'); // Can be 'overview', 'active', 'completed'
-// Fetch user progress from backend on login to fix "Local Storage Amnesia"
+  const [selectedCareer, setSelectedCareer] = useState(null);
+  const [recommendedMentors, setRecommendedMentors] = useState([]);
+  const [loadingMentors, setLoadingMentors] = useState(false);
+
+  // Fetch Selected Career
   useEffect(() => {
-    const checkUserProgress = async () => {
+    async function fetchSavedCareer() {
       try {
-        const { apiClient } = await import('../services/api/apiClient');
-        const response = await apiClient.get('/api/v1/auth/users/me');
-        let stateChanged = false;
-
-        // Restore Profile Status
-        if (response.progress.profile_done) {
-          localStorage.setItem('harmony_profile_done', 'true');
-          stateChanged = true;
+        const response = await getSelectedCareer();
+        if (response?.career_title) {
+          setSelectedCareer({ title: response.career_title });
         }
-        
-        // Restore Aptitude Status
-        if (response.progress.aptitude_done) {
-          localStorage.setItem('harmony_aptitude_done', 'true');
-          stateChanged = true;
-        }
-
-        // Restore Personality Status
-        if (response.progress.personality_done) {
-          localStorage.setItem('harmony_personality_done', 'true');
-          stateChanged = true;
-        }
-
-        // If we restored anything, trigger a reload so the UI catches up instantly
-        if (stateChanged) {
-          window.location.reload(); 
-        }
-
-      } catch (error) {
-        console.error("No existing profile found or error fetching progress:", error);
+      } catch (err) {
+        console.error('Dashboard: Failed to fetch saved career', err);
       }
-    };
-
-    // Only run the DB check if the browser's local storage looks empty
-    if (!localStorage.getItem('harmony_profile_done')) {
-      checkUserProgress();
     }
+    fetchSavedCareer();
   }, []);
-  // Fetch invite code on component mount
+
+  // Fetch Invite Code
   useEffect(() => {
     const getInviteCode = async () => {
       try {
         const response = await parentStudentApi.getStudentInviteCode();
         setInviteCode(response.invite_code);
       } catch (error) {
-        console.error("Error fetching invite code:", error);
-        toast.error("Failed to fetch invite code.");
+        console.error('Error fetching invite code:', error);
       }
     };
     getInviteCode();
   }, []);
-  const [recommendedMentors, setRecommendedMentors] = useState([]);
-const [loadingMentors, setLoadingMentors] = useState(false);
 
-useEffect(() => {
-  if (progress.selectedCareer) {
-    const fetchMentors = async () => {
-      setLoadingMentors(true);
-      try {
-        // We call our API bundle
-        const mentors = await mentorshipApi.getRecommendedMentors(progress.selectedCareer.title);
-        setRecommendedMentors(mentors);
-      } catch (error) {
-        console.error("Mentor fetch failed", error);
-      } finally {
-        setLoadingMentors(false);
-      }
-    };
-    fetchMentors();
-  }
-}, [progress.selectedCareer]);
+  // Fetch Mentors
+  useEffect(() => {
+    if (selectedCareer) {
+      const fetchMentors = async () => {
+        setLoadingMentors(true);
+        try {
+          const mentors = await mentorshipApi.getRecommendedMentors(selectedCareer.title);
+          setRecommendedMentors(mentors);
+        } catch (error) {
+          console.error('Mentor fetch failed', error);
+        } finally {
+          setLoadingMentors(false);
+        }
+      };
+      fetchMentors();
+    }
+  }, [selectedCareer]);
 
   const handleLogout = () => {
     clearUserSession();
@@ -164,48 +251,56 @@ useEffect(() => {
   const startJourney = async () => {
     try {
       await roadmapApi.startRoadmap();
-      setRoadmapStatus('active');
-      toast.success("Your career journey has started!");
+      toast.success('Your career journey has started!');
     } catch (error) {
-      console.error("Error starting roadmap:", error);
-      toast.error("Failed to start roadmap.");
+      console.error('Error starting roadmap:', error);
+      toast.error('Failed to start roadmap.');
     }
+  };
+
+  const handlePersonalityClick = () => {
+    if (!progress.profileDone) return;
+    navigate('/personality-test');
+  };
+
+  const handleAptitudeClick = () => {
+    if (!progress.profileDone) return;
+    navigate('/aptitude-test');
   };
 
   const currentPhase = !progress.profileDone ? 1
     : !progress.assessmentsDone ? 2
-    : !progress.selectedCareer ? 3
+    : !selectedCareer ? 3
     : 4;
 
   const overallPct = [
     progress.profileDone,
     progress.personalityDone,
     progress.aptitudeDone,
-    !!progress.selectedCareer,
+    !!selectedCareer,
   ].filter(Boolean).length * 25;
 
-  const springTransition = { type: "spring", stiffness: 400, damping: 25 };
+  const springTransition = { type: 'spring', stiffness: 400, damping: 25 };
 
   const fireConfetti = () => {
-    confetti({
-      particleCount: 75,
-      angle: 60,
-      spread: 70,
-      origin: { x: 0, y: 0.8 },
-      colors: ['#3b82f6', '#10b981', '#f59e0b', '#ffffff']
-    });
-    confetti({
-      particleCount: 75,
-      angle: 120,
-      spread: 70,
-      origin: { x: 1, y: 0.8 },
-      colors: ['#3b82f6', '#10b981', '#f59e0b', '#ffffff']
-    });
+    confetti({ particleCount: 75, angle: 60, spread: 70, origin: { x: 0, y: 0.8 }, colors: ['#3b82f6', '#10b981', '#f59e0b', '#ffffff'] });
+    confetti({ particleCount: 75, angle: 120, spread: 70, origin: { x: 1, y: 0.8 }, colors: ['#3b82f6', '#10b981', '#f59e0b', '#ffffff'] });
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 size={40} className="animate-spin text-blue-500" />
+          <p className="text-slate-500 font-semibold">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900 overflow-x-hidden">
-      
+
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col justify-between fixed h-screen z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
         <div>
@@ -217,13 +312,13 @@ useEffect(() => {
           </div>
           <nav className="px-4 space-y-1">
             <NavItem icon={LayoutDashboard} label="Dashboard" active />
-            <NavItem icon={User}            label="My Profile"     onClick={() => navigate('/profile-creation')} />
-            <NavItem icon={Brain}           label="Personality"    onClick={() => navigate('/personality-test')} />
-            <NavItem icon={Zap}             label="Aptitude Test"  onClick={() => navigate('/aptitude-test')} />
-            <NavItem icon={Sparkles}        label="Career Matches" onClick={() => navigate('/career-recommendations')} />
-            <NavItem icon={Map}             label="My Roadmap"     onClick={() => navigate('/roadmap')} />
-            <NavItem icon={Video}           label="Mentorship"     />
-            <NavItem icon={Settings}        label="Settings"       />
+            <NavItem icon={User} label="My Profile" onClick={() => navigate('/profile-creation')} />
+            <NavItem icon={Brain} label="Personality" onClick={handlePersonalityClick} />
+            <NavItem icon={Zap} label="Aptitude Test" onClick={handleAptitudeClick} />
+            <NavItem icon={Sparkles} label="Career Matches" onClick={() => navigate('/career-recommendations')} />
+            <NavItem icon={Map} label="My Roadmap" onClick={() => navigate('/roadmap')} />
+            <NavItem icon={Video} label="Mentorship" />
+            <NavItem icon={Settings} label="Settings" />
           </nav>
         </div>
         <div className="p-4 border-t border-slate-100">
@@ -234,7 +329,10 @@ useEffect(() => {
             </div>
             <div className="text-xs font-bold text-slate-500 mt-1">{overallPct}% complete</div>
           </div>
-          <button onClick={handleLogout} className="flex items-center w-full px-4 py-3 text-slate-500 hover:text-red-500 hover:bg-red-50 hover:translate-x-1 rounded-xl transition-all duration-300 font-semibold group">
+          <button
+            onClick={handleLogout}
+            className="flex items-center w-full px-4 py-3 text-slate-500 hover:text-red-500 hover:bg-red-50 hover:translate-x-1 rounded-xl transition-all duration-300 font-semibold group"
+          >
             <LogOut size={20} className="mr-3 group-hover:scale-110 transition-transform" /> Sign Out
           </button>
         </div>
@@ -242,18 +340,12 @@ useEffect(() => {
 
       {/* Main Content */}
       <main className="flex-1 md:ml-64 p-6 md:p-8">
-        
+
         {/* Header */}
         <header className="flex justify-between items-center mb-8">
           <div>
-            <SplitText 
-              text={`Welcome back, ${name}!`} 
-              className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight flex flex-wrap" 
-            />
-            <motion.p 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5, duration: 0.8 }}
-              className="text-slate-500 font-medium mt-1"
-            >
+            <SplitText text={`Welcome back, ${name}!`} className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight flex flex-wrap" />
+            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5, duration: 0.8 }} className="text-slate-500 font-medium mt-1">
               {currentPhase === 1 && "Let's start by building your profile — it only takes 5 minutes."}
               {currentPhase === 2 && "Your profile is set. Time to complete your assessments."}
               {currentPhase === 3 && "Assessments done! Let's discover your perfect career matches."}
@@ -261,20 +353,24 @@ useEffect(() => {
             </motion.p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 hover:scale-105 hover:shadow-md transition-all duration-300 shadow-sm">
+            {/* Mobile logout button */}
+            <button
+              onClick={handleLogout}
+              className="md:hidden flex items-center gap-1.5 px-3 py-2 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-semibold text-sm"
+            >
+              <LogOut size={16} /> Out
+            </button>
+            <button className="relative p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-50 hover:scale-105 shadow-sm">
               <Bell size={20} className="text-slate-600" />
             </button>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 border-2 border-white shadow-sm hover:shadow-lg hover:scale-105 transition-all duration-300 cursor-pointer flex items-center justify-center text-white font-extrabold text-sm">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 border-2 border-white shadow-sm flex items-center justify-center text-white font-extrabold text-sm">
               {name[0]?.toUpperCase()}
             </div>
           </div>
         </header>
 
         {/* Journey Progress Timeline */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mb-6"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-extrabold text-slate-800">Your AI Career Journey</h2>
             <span className="text-sm font-bold text-blue-600">{overallPct}% complete</span>
@@ -284,8 +380,8 @@ useEffect(() => {
             <div className={`flex-1 h-1 rounded-full mx-2 ${progress.profileDone ? 'bg-emerald-400' : 'bg-slate-200'}`} />
             <PhaseStep number="2" label="Assessments" status={progress.assessmentsDone ? 'done' : currentPhase === 2 ? 'active' : 'locked'} color="bg-gradient-to-r from-violet-500 to-purple-400" />
             <div className={`flex-1 h-1 rounded-full mx-2 ${progress.assessmentsDone ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-            <PhaseStep number="3" label="Career Path" status={progress.selectedCareer ? 'done' : currentPhase === 3 ? 'active' : 'locked'} color="bg-gradient-to-r from-amber-500 to-orange-400" />
-            <div className={`flex-1 h-1 rounded-full mx-2 ${progress.selectedCareer ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+            <PhaseStep number="3" label="Career Path" status={selectedCareer ? 'done' : currentPhase === 3 ? 'active' : 'locked'} color="bg-gradient-to-r from-amber-500 to-orange-400" />
+            <div className={`flex-1 h-1 rounded-full mx-2 ${selectedCareer ? 'bg-emerald-400' : 'bg-slate-200'}`} />
             <PhaseStep number="4" label="My Roadmap" status={currentPhase === 4 ? 'active' : currentPhase > 4 ? 'done' : 'locked'} color="bg-gradient-to-r from-emerald-500 to-teal-400" />
           </div>
         </motion.div>
@@ -293,259 +389,177 @@ useEffect(() => {
         {/* Main Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-          {/* ===================== DIV 1: Phase 1 ===================== */}
+          {/* Phase 1 Card */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02, y: -8 }}
-            transition={springTransition}
-            className={`group md:col-span-2 rounded-3xl p-8 relative overflow-hidden transition-shadow duration-300 hover:shadow-2xl ${
-              progress.profileDone ? 'bg-gradient-to-br from-emerald-600 to-teal-500' : 'bg-gradient-to-br from-blue-600 to-sky-400'
-            } text-white shadow-lg`}
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
+            className={`group md:col-span-2 rounded-3xl p-8 relative overflow-hidden ${progress.profileDone ? 'bg-gradient-to-br from-emerald-600 to-teal-500' : 'bg-gradient-to-br from-blue-600 to-sky-400'} text-white shadow-lg`}
           >
-            <ShinyOverlay /> 
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+            <ShinyOverlay />
             <div className="relative z-10 flex flex-col h-full justify-between">
               <div>
                 <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
                   {progress.profileDone ? '✅ Phase 1 — Complete' : '📋 Phase 1 — Build Your Profile'}
                 </span>
-                {progress.profileDone ? (
-                  <>
-                    <BlurText text="Profile Complete" className="text-2xl font-extrabold mb-2" />
-                    <BlurText text="Your profile has been built. Your background, interests, and aspirations have been captured." delay={0.2} className="text-white/80 font-medium max-w-md block" />
-                  </>
-                ) : (
-                  <>
-                    <BlurText text="Start by building your profile" className="text-2xl font-extrabold mb-2" />
-                    <BlurText text="Answer questions about your background, academics, lifestyle, interests, aspirations, and financial situation. Takes ~5 minutes." delay={0.2} className="text-blue-50 font-medium max-w-md block" />
-                  </>
-                )}
+                <h2 className="text-2xl font-extrabold mb-2">{progress.profileDone ? 'Profile Complete' : 'Start by building your profile'}</h2>
+                <p className="text-white/80 font-medium max-w-md">{progress.profileDone ? 'Your background and interests have been captured.' : 'Answer questions about your background and aspirations. Takes ~5 minutes.'}</p>
               </div>
               {!progress.profileDone && (
-                <button onClick={() => navigate('/profile-creation')} className="mt-6 flex items-center gap-2 px-6 py-3.5 bg-white text-blue-600 font-extrabold rounded-2xl shadow-sm hover:scale-105 hover:shadow-lg transition-all duration-300 w-fit text-base">
-                  Build My Profile <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform duration-300" />
+                <button onClick={() => navigate('/profile-creation')} className="mt-6 flex items-center gap-2 px-6 py-3.5 bg-white text-blue-600 font-extrabold rounded-2xl shadow-sm w-fit">
+                  Build My Profile <ArrowRight size={20} />
                 </button>
               )}
             </div>
           </motion.div>
 
-          {/* Assessment Mini Cards */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="space-y-4 flex flex-col h-full">
-            <div onClick={() => progress.profileDone && navigate('/personality-test')} className={`flex-1 bg-white rounded-3xl border p-6 shadow-sm transition-all duration-300 group ${progress.profileDone ? 'hover:border-violet-300 hover:shadow-[0_8px_30px_rgb(139,92,246,0.12)] hover:-translate-y-1 cursor-pointer' : 'opacity-60 cursor-not-allowed'} ${progress.personalityDone ? 'border-emerald-200' : 'border-slate-100'}`}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-300 ${progress.profileDone && 'group-hover:scale-110 group-hover:-rotate-3'} ${progress.personalityDone ? 'bg-emerald-100' : 'bg-violet-100'}`}>
-                  <Brain size={20} className={progress.personalityDone ? 'text-emerald-600' : 'text-violet-600'} />
+          {/* Assessment Cards */}
+          <div className="space-y-4 flex flex-col h-full">
+            {/* Personality Card */}
+            {progress.personalityDone ? (
+              <PersonalityCompletedCard personalityData={progress.personalityData} />
+            ) : (
+              <div
+                onClick={handlePersonalityClick}
+                className={`flex-1 bg-white rounded-3xl border p-6 shadow-sm transition-all group ${
+                  progress.profileDone ? 'hover:border-violet-300 cursor-pointer' : 'opacity-60 cursor-not-allowed'
+                } border-slate-100`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-violet-100">
+                    <Brain size={20} className="text-violet-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-extrabold text-sm text-slate-800">Personality Test</p>
+                    <p className="text-xs text-slate-400">35 questions · ~10 min</p>
+                  </div>
+                  <ChevronRight size={18} className="text-slate-400" />
                 </div>
-                <div className="flex-1">
-                  <p className={`font-extrabold text-sm transition-colors duration-300 ${progress.profileDone && 'group-hover:text-violet-600'} text-slate-800`}>Personality Test</p>
-                  <p className="text-xs font-medium text-slate-400">35 questions · ~10 min</p>
-                </div>
-                {progress.personalityDone ? <CheckCircle2 size={20} className="text-emerald-500" /> : !progress.profileDone ? <Lock size={16} className="text-slate-300" /> : <ChevronRight size={18} className="text-slate-300 group-hover:translate-x-1 transition-transform" />}
               </div>
-            </div>
-            <div onClick={() => progress.profileDone && navigate('/aptitude-test')} className={`flex-1 bg-white rounded-3xl border p-6 shadow-sm transition-all duration-300 group ${progress.profileDone ? 'hover:border-blue-300 hover:shadow-[0_8px_30px_rgb(59,130,246,0.12)] hover:-translate-y-1 cursor-pointer' : 'opacity-60 cursor-not-allowed'} ${progress.aptitudeDone ? 'border-emerald-200' : 'border-slate-100'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-300 ${progress.profileDone && 'group-hover:scale-110 group-hover:rotate-3'} ${progress.aptitudeDone ? 'bg-emerald-100' : 'bg-blue-100'}`}>
-                  <Zap size={20} className={progress.aptitudeDone ? 'text-emerald-600' : 'text-blue-600'} />
-                </div>
-                <div className="flex-1">
-                  <p className={`font-extrabold text-sm transition-colors duration-300 ${progress.profileDone && 'group-hover:text-blue-600'} text-slate-800`}>Aptitude Test</p>
-                  <p className="text-xs font-medium text-slate-400">15 questions · ~8 min</p>
-                </div>
-                {progress.aptitudeDone ? <CheckCircle2 size={20} className="text-emerald-500" /> : !progress.profileDone ? <Lock size={16} className="text-slate-300" /> : <ChevronRight size={18} className="text-slate-300 group-hover:translate-x-1 transition-transform" />}
-              </div>
-            </div>
-          </motion.div>
+            )}
 
-          {/* ===================== DIV 2: Phase 3 ===================== */}
+            {/* Aptitude Card */}
+            {progress.aptitudeDone ? (
+              <AptitudeCompletedCard aptiData={progress.aptiData} />
+            ) : (
+              <div
+                onClick={handleAptitudeClick}
+                className={`flex-1 bg-white rounded-3xl border p-6 shadow-sm transition-all group ${
+                  progress.profileDone ? 'hover:border-blue-300 cursor-pointer' : 'opacity-60 cursor-not-allowed'
+                } border-slate-100`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-100">
+                    <Zap size={20} className="text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-extrabold text-sm text-slate-800">Aptitude Test</p>
+                    <p className="text-xs text-slate-400">15 questions · ~8 min</p>
+                  </div>
+                  <ChevronRight size={18} className="text-slate-400" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Career Matches Card */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02, y: -8 }}
-            transition={springTransition}
-            className={`group rounded-3xl p-8 relative overflow-hidden shadow-sm transition-shadow duration-300 hover:shadow-2xl ${
-              progress.assessmentsDone
-                ? progress.selectedCareer ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white' : 'bg-gradient-to-br from-amber-500 to-orange-400 text-white'
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
+            className={`group rounded-3xl p-8 relative overflow-hidden shadow-sm cursor-pointer ${
+              selectedCareer
+                ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white'
+                : progress.assessmentsDone
+                ? 'bg-gradient-to-br from-amber-500 to-orange-400 text-white'
                 : 'bg-white border border-slate-100 text-slate-900'
             }`}
-            onClick={() => progress.assessmentsDone && !progress.selectedCareer && navigate('/career-recommendations')}
-            style={{ cursor: progress.assessmentsDone && !progress.selectedCareer ? 'pointer' : 'default' }}
+            onClick={() => progress.assessmentsDone && !selectedCareer && navigate('/career-recommendations')}
           >
-            {progress.assessmentsDone && <ShinyOverlay />} 
-            {!progress.assessmentsDone ? (
-              <div className="flex flex-col h-full">
-                <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
-                  <Lock size={24} className="text-slate-400" />
-                </div>
-                <BlurText text="AI Career Matches" className="font-extrabold text-slate-800 mb-2 text-lg block" />
-                <BlurText text="Complete both assessments to unlock your personalised career recommendations." delay={0.2} className="text-slate-500 text-sm font-medium block" />
-              </div>
-            ) : (
-              <>
-                <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4 group-hover:scale-125 transition-transform duration-700" />
-                <div className="relative z-10">
-                  <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
-                    {progress.selectedCareer ? '✅ Career Selected' : '✨ Phase 3 — Ready!'}
-                  </span>
-                  <BlurText text={progress.selectedCareer ? progress.selectedCareer.title : 'Discover Your Career Path'} className="text-xl font-extrabold mb-2 block" />
-                  <BlurText text={progress.selectedCareer ? progress.selectedCareer.rationale : 'AI has analysed your complete profile. Tap to see your top 5 career matches.'} delay={0.2} className="text-white/80 font-medium text-sm mb-4 block" />
-                  
-                  {!progress.selectedCareer && (
-                    <button onClick={() => navigate('/career-recommendations')} className="flex items-center gap-2 px-5 py-3 bg-white text-amber-600 font-extrabold rounded-2xl text-sm hover:scale-105 hover:shadow-lg transition-all shadow-sm">
-                      <Sparkles size={16} /> See My Matches
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
+            {progress.assessmentsDone && <ShinyOverlay />}
+            <div className="relative z-10">
+              <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
+                {selectedCareer ? '✅ Career Selected' : '✨ Phase 3'}
+              </span>
+              <h3 className="text-xl font-extrabold mb-2">{selectedCareer ? selectedCareer.title : 'AI Career Matches'}</h3>
+              <p className="text-sm mb-4 opacity-80">{selectedCareer ? 'Your chosen path is active.' : 'Unlock recommendations.'}</p>
+              {!selectedCareer && progress.assessmentsDone && (
+                <button className="px-5 py-3 bg-white text-amber-600 font-extrabold rounded-2xl text-sm">See My Matches</button>
+              )}
+            </div>
           </motion.div>
 
-          {/* ===================== DIV 3: Phase 4 ===================== */}
+          {/* Roadmap Card */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02, y: -8 }}
-            transition={springTransition}
-            className={`group md:col-span-2 rounded-3xl p-8 relative overflow-hidden shadow-sm transition-shadow duration-300 hover:shadow-2xl ${
-              progress.selectedCareer && roadmapStatus === 'overview' ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white cursor-pointer' : 'bg-white border border-slate-100 text-slate-900'
-            }`}
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
+            className={`group md:col-span-2 rounded-3xl p-8 relative overflow-hidden ${selectedCareer ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white' : 'bg-white border border-slate-100'}`}
           >
-            {progress.selectedCareer && <ShinyOverlay />} 
-            {!progress.selectedCareer ? (
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center shrink-0">
-                  <Lock size={24} className="text-slate-400" />
-                </div>
-                <div>
-                  <BlurText text="Your Career Roadmap" className="font-extrabold text-slate-800 mb-2 text-lg block" />
-                  <BlurText text="Select a career from the AI recommendations to generate your personalised step-by-step roadmap." delay={0.2} className="text-slate-500 text-sm font-medium block" />
-                </div>
-              </div>
-            ) : (
-              <>
-                {roadmapStatus === 'overview' && (
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div>
-                      <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/20">
-                        🗺️ Phase 4 — Roadmap Ready
-                      </span>
-                      <BlurText text="Your Roadmap is Ready!" className="text-2xl font-extrabold mb-2 text-white block" />
-                      <BlurText text="Your personalised week-by-week career roadmap is ready. Start your journey today!" delay={0.2} className="text-slate-400 font-medium max-w-lg block" />
-                      <button onClick={startJourney} className="mt-6 flex items-center gap-2 px-6 py-3.5 bg-white text-emerald-600 font-extrabold rounded-2xl shadow-sm hover:scale-105 hover:shadow-lg transition-all duration-300 w-fit text-base">
-                        Start My Journey <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform duration-300" />
-                      </button>
-                    </div>
-                    <div className="shrink-0 w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-400 rounded-2xl flex items-center justify-center shadow-lg ml-4 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
-                      <Target size={32} className="text-white" />
-                    </div>
-                  </div>
-                )}
-                {roadmapStatus === 'active' && <ActiveRoadmap />}
-              </>
-            )}
+            {selectedCareer && <ShinyOverlay />}
+            <div className="relative z-10">
+              <h3 className="text-2xl font-extrabold mb-2">Your Career Roadmap</h3>
+              {selectedCareer ? (
+                <>
+                  <p className="text-slate-400 mb-6">Your step-by-step roadmap is ready. Start your journey today!</p>
+                  <button onClick={startJourney} className="flex items-center gap-2 px-6 py-3.5 bg-white text-slate-900 font-extrabold rounded-2xl">
+                    Start My Journey <ArrowRight size={20} />
+                  </button>
+                </>
+              ) : (
+                <p className="text-slate-500">Select a career to generate your roadmap.</p>
+              )}
+            </div>
           </motion.div>
 
-          {/* ===================== Parent Invite Section ===================== */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={springTransition}
-            className="md:col-span-1 rounded-3xl p-8 relative overflow-hidden bg-white border border-slate-100 shadow-sm"
-          >
-            <h3 className="font-extrabold text-slate-800 mb-4">Share Profile with Parents</h3>
-            {inviteCode ? (
-              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <p className="font-bold text-slate-800 tracking-widest text-lg">{inviteCode}</p>
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(inviteCode);
-                    toast.success("Invite code copied!");
-                  }}
-                  className="ml-4 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                  Copy
-                </button>
-              </div>
-            ) : (
-              <p className="text-slate-500">Loading invite code...</p>
-            )}
-          </motion.div>
-
-        </div>
-        
-            {progress.selectedCareer && (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="md:col-span-3 bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mt-6"
-  >
-    <div className="flex items-center justify-between mb-6">
-      <div>
-        <h3 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-          <Users className="text-blue-500" size={24} /> Recommended Mentors
-        </h3>
-        <p className="text-slate-500 font-medium mt-1">
-          Connect with experts who can help you become a {progress.selectedCareer.title}
-        </p>
-      </div>
-    </div>
-
-    {loadingMentors ? (
-      <div className="flex items-center gap-3 py-8 text-slate-400">
-        <Loader2 className="animate-spin" /> <span>Finding your matches...</span>
-      </div>
-    ) : (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {recommendedMentors.length > 0 ? (
-          recommendedMentors.map((mentor) => (
-            <div key={mentor.id} className="bg-slate-50 rounded-2xl p-5 border border-slate-100 hover:border-blue-200 transition-all group">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg">
-                  {mentor.full_name?.[0] || 'M'}
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-800">{mentor.full_name || 'Verified Mentor'}</h4>
-                  <p className="text-xs font-bold text-blue-500 uppercase tracking-tighter">{mentor.expertise}</p>
-                </div>
-              </div>
-              <p className="text-sm text-slate-500 line-clamp-2 mb-4 leading-relaxed">
-                {mentor.bio || "Industry professional with expertise in " + mentor.expertise}
-              </p>
-              <button 
-                onClick={() => navigate(`/mentorship/${mentor.id}`)}
-                className="w-full py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-100 transition-all flex items-center justify-center gap-2"
+          {/* Parent Invite */}
+          <div className="rounded-3xl p-8 bg-white border border-slate-100 shadow-sm">
+            <h3 className="font-extrabold text-slate-800 mb-4">Share with Parents</h3>
+            <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
+              <p className="font-bold text-slate-800 tracking-widest">{inviteCode || 'Loading...'}</p>
+              <button
+                onClick={() => { navigator.clipboard.writeText(inviteCode); toast.success('Copied!'); }}
+                className="text-blue-500 font-bold"
               >
-                View Profile <ChevronRight size={16} />
+                Copy
               </button>
             </div>
-          ))
-        ) : (
-          <div className="md:col-span-3 py-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-             <UserCheck size={40} className="mx-auto text-slate-300 mb-3" />
-             <p className="text-slate-500 font-semibold">No direct matches for this niche yet.</p>
-             <button onClick={() => navigate('/mentorship')} className="mt-2 text-blue-500 font-bold text-sm">Browse all mentors</button>
+          </div>
+        </div>
+
+        {/* Mentor Section */}
+        {selectedCareer && (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 mt-6">
+            <h3 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2 mb-6">
+              <Users className="text-blue-500" size={24} /> Recommended Mentors
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {loadingMentors ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                recommendedMentors.map(mentor => (
+                  <div key={mentor.id} className="bg-slate-50 p-5 rounded-2xl border hover:border-blue-200 transition-all">
+                    <h4 className="font-bold">{mentor.full_name}</h4>
+                    <p className="text-xs text-blue-500 font-bold">{mentor.expertise}</p>
+                    <button
+                      onClick={() => navigate(`/mentorship/${mentor.id}`)}
+                      className="mt-4 w-full py-2 bg-white rounded-xl text-sm font-bold border"
+                    >
+                      View Profile
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         )}
-      </div>
-    )}
-  </motion.div>
-)}
-        {/* ===================== DIV 4: Motivation Footer ===================== */}
+
+        {/* Global Journey Completion */}
         {overallPct === 100 && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02, rotate: [0, -2, 2.5, -1.5, 1, 0] }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
-            onMouseEnter={fireConfetti} 
-            className="group mt-6 bg-gradient-to-r from-blue-600 to-sky-400 rounded-3xl p-8 text-white text-center shadow-lg cursor-pointer relative overflow-hidden"
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            onMouseEnter={fireConfetti}
+            className="mt-6 bg-gradient-to-r from-blue-600 to-sky-400 rounded-3xl p-8 text-white text-center shadow-lg cursor-pointer"
           >
-            <ShinyOverlay /> 
-            <div className="relative z-10 flex flex-col items-center">
-              <BlurText text="You've completed the full journey!" className="text-2xl font-extrabold mb-2 block" />
-              <BlurText text="Your career roadmap is live. Start with Phase 1 and make your dream a reality." delay={0.2} className="text-blue-100 font-medium block" />
-            </div>
+            <h2 className="text-2xl font-extrabold mb-2">You've completed the full journey!</h2>
+            <p className="text-blue-100">Your roadmap is live. Make your dream a reality.</p>
           </motion.div>
         )}
       </main>

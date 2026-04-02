@@ -4,10 +4,17 @@ import {
   ArrowLeft, Loader2, ChevronDown, ChevronUp, CheckCircle2, Zap,
   Target, BookOpen, Flag, AlertCircle, Clock, BarChart2, Brain,
   ExternalLink, RefreshCw, Layers, Users, UserCheck,
-  Wand2, MessageSquare, Sparkles,
+  Wand2, MessageSquare, Sparkles, Circle, CheckCircle, Map
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getCareerRoadmap } from '../services/api/careerApi';
+
+// API Service Imports
+import { roadmapApi } from '../services/api/roadmapApi';
+import { getSelectedCareer } from '../services/api/careerApi';
+
+// ============================================================================
+// CONSTANTS & META DATA
+// ============================================================================
 
 const IMPORTANCE_META = {
   CRITICAL:       { label: 'Critical',        bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    gradient: 'from-rose-500 to-pink-400' },
@@ -29,11 +36,18 @@ const LEVEL_META = {
   ADVANCED:     { label: 'Advanced',     bg: 'bg-rose-100',    text: 'text-rose-700',    dot: 'bg-rose-500'    },
 };
 
+// ============================================================================
+// SUB-COMPONENTS
+// ============================================================================
 
-function PhaseCard({ phase, index, totalPhases }) {
+function PhaseCard({ phase, index, totalPhases, onToggleTask }) {
   const [expanded, setExpanded] = useState(index === 0);
   const meta = IMPORTANCE_META[phase.importance] || IMPORTANCE_META.STRATEGIC;
   const gradient = PHASE_GRADIENTS[index % PHASE_GRADIENTS.length];
+  
+  const totalTasks = phase.tasks?.length || 0;
+  const completedTasks = phase.tasks?.filter(t => t.status === 'Completed').length || 0;
+  const progress = phase.progress_percentage || 0;
 
   return (
     <motion.div
@@ -46,10 +60,13 @@ function PhaseCard({ phase, index, totalPhases }) {
         <div className="absolute left-8 top-full h-6 w-0.5 bg-gradient-to-b from-slate-300 to-transparent z-10" />
       )}
 
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-4">
         {/* Phase Header */}
-        <button onClick={() => setExpanded(e => !e)} className="w-full text-left">
-          <div className={`bg-gradient-to-r ${gradient} p-6 text-white relative overflow-hidden`}>
+        <div className="w-full relative">
+          <button 
+            onClick={() => setExpanded(e => !e)} 
+            className={`w-full text-left bg-gradient-to-r ${gradient} p-6 text-white relative overflow-hidden transition-all`}
+          >
             <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
             <div className="relative z-10 flex items-start justify-between gap-4">
               <div className="flex items-start gap-4">
@@ -62,11 +79,10 @@ function PhaseCard({ phase, index, totalPhases }) {
                       {meta.label}
                     </span>
                     <span className="px-2.5 py-1 bg-white/20 rounded-full text-xs font-bold border border-white/30 backdrop-blur-sm">
-                      {phase.duration_weeks} weeks
+                      {completedTasks}/{totalTasks} Tasks
                     </span>
                   </div>
-                  <h3 className="text-xl font-extrabold">{phase.phase_title}</h3>
-                  <p className="text-white/80 font-medium mt-1 text-sm line-clamp-2">{phase.description}</p>
+                  <h3 className="text-xl font-extrabold">{phase.title || phase.phase_title}</h3>
                 </div>
               </div>
               <div className="shrink-0 mt-1">
@@ -74,20 +90,22 @@ function PhaseCard({ phase, index, totalPhases }) {
               </div>
             </div>
 
-            {/* Skills Targeted */}
-            {phase.skills_targeted && phase.skills_targeted.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {phase.skills_targeted.map((skill, si) => (
-                  <span key={si} className="px-2.5 py-1 bg-white/15 border border-white/30 backdrop-blur-sm rounded-full text-xs font-semibold">
-                    {skill}
-                  </span>
-                ))}
+            <div className="mt-4 relative z-10">
+              <div className="flex justify-between items-center mb-1 text-[10px] font-bold uppercase tracking-wider text-white/90">
+                <span>Phase Progress</span>
+                <span>{Math.round(progress)}%</span>
               </div>
-            )}
-          </div>
-        </button>
+              <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden border border-white/10">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  className="h-full bg-white rounded-full shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                />
+              </div>
+            </div>
+          </button>
+        </div>
 
-        {/* Expanded Content */}
         <AnimatePresence>
           {expanded && (
             <motion.div
@@ -97,65 +115,40 @@ function PhaseCard({ phase, index, totalPhases }) {
               transition={{ duration: 0.3 }}
               className="overflow-hidden"
             >
-              <div className="p-6 space-y-6">
-
-                {/* Weekly Breakdown */}
-                {phase.weekly_breakdown && phase.weekly_breakdown.length > 0 && (
-                  <div>
-                    <h4 className="flex items-center gap-2 font-extrabold text-slate-800 mb-4 text-sm uppercase tracking-wider">
-                      <BookOpen size={16} className="text-blue-500" /> Week-by-Week Breakdown
-                    </h4>
-                    <div className="space-y-3">
-                      {phase.weekly_breakdown.map((week) => (
-                        <div key={week.week_number} className="bg-slate-50 rounded-2xl border border-slate-100 p-4">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className={`w-8 h-8 rounded-full bg-gradient-to-r ${gradient} text-white text-xs font-extrabold flex items-center justify-center shrink-0`}>
-                              W{week.week_number}
-                            </div>
-                            <span className="font-bold text-slate-800">{week.topic}</span>
-                          </div>
-                          <ul className="space-y-1.5 ml-11 mb-3">
-                            {week.tasks.map((task, ti) => (
-                              <li key={ti} className="flex items-start gap-2 text-sm text-slate-600 font-medium">
-                                <CheckCircle2 size={14} className="text-emerald-400 mt-0.5 shrink-0" />
-                                {task}
-                              </li>
-                            ))}
-                          </ul>
-
-                          {/* Resources */}
-                          {week.resources && week.resources.length > 0 && (
-                            <div className="ml-11 mt-3 pt-3 border-t border-slate-200">
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Resources</p>
-                              <div className="flex flex-wrap gap-2">
-                                {week.resources.map((res, ri) => {
-                                  const isUrl = typeof res === 'string' && (res.startsWith('http://') || res.startsWith('https://'));
-                                  return isUrl ? (
-                                    <a
-                                      key={ri}
-                                      href={res}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded-full text-xs font-semibold hover:bg-blue-100 transition-colors"
-                                    >
-                                      <ExternalLink size={11} /> {res.replace(/^https?:\/\//, '').split('/')[0]}
-                                    </a>
-                                  ) : (
-                                    <span key={ri} className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 border border-slate-200 text-slate-600 rounded-full text-xs font-semibold">
-                                      <BookOpen size={11} /> {res}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </div>
+              <div className="p-6 space-y-6 bg-white">
+                <div>
+                  <h4 className="flex items-center gap-2 font-extrabold text-slate-800 mb-4 text-sm uppercase tracking-wider">
+                    <CheckCircle2 size={16} className="text-blue-500" /> Milestone Tasks
+                  </h4>
+                  <div className="grid gap-3">
+                    {phase.tasks?.map((task) => (
+                      <button
+                        key={task.id}
+                        onClick={() => onToggleTask(task.id, phase.id)}
+                        className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${
+                          task.status === 'Completed' 
+                          ? 'bg-emerald-50/50 border-emerald-100 text-slate-700' 
+                          : 'bg-slate-50 border-slate-100 hover:border-blue-200 text-slate-600'
+                        }`}
+                      >
+                        <div className="shrink-0">
+                          {task.status === 'Completed' ? (
+                            <CheckCircle size={24} className="text-emerald-500 fill-emerald-100" />
+                          ) : (
+                            <Circle size={24} className="text-slate-300 group-hover:text-blue-400" />
                           )}
                         </div>
-                      ))}
-                    </div>
+                        <div className="flex-1">
+                          <p className={`font-bold text-sm ${task.status === 'Completed' ? 'line-through opacity-60' : ''}`}>
+                            {task.title}
+                          </p>
+                          {task.description && <p className="text-xs text-slate-400 mt-0.5">{task.description}</p>}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
 
-                {/* Milestone Project */}
                 {phase.milestone_project && (
                   <div className={`${meta.bg} ${meta.border} border rounded-2xl p-5`}>
                     <div className="flex items-center gap-2 mb-2">
@@ -163,17 +156,6 @@ function PhaseCard({ phase, index, totalPhases }) {
                       <span className={`text-xs font-extrabold uppercase tracking-wider ${meta.text}`}>Milestone Project</span>
                     </div>
                     <p className={`font-bold text-base ${meta.text}`}>{phase.milestone_project}</p>
-                  </div>
-                )}
-
-                {/* Success Criteria */}
-                {phase.success_criteria && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle2 size={16} className="text-emerald-600" />
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-700">You're ready when...</span>
-                    </div>
-                    <p className="font-semibold text-emerald-800 text-sm">{phase.success_criteria}</p>
                   </div>
                 )}
               </div>
@@ -185,49 +167,88 @@ function PhaseCard({ phase, index, totalPhases }) {
   );
 }
 
+// ============================================================================
+// MAIN ROADMAP COMPONENT
+// ============================================================================
+
 export default function Roadmap() {
   const navigate = useNavigate();
   const [roadmap, setRoadmap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [adjustOpen, setAdjustOpen] = useState(false);
-  const [adjustNote, setAdjustNote] = useState('');
-  const [adjusting, setAdjusting] = useState(false);
-  const [adjustSuccess, setAdjustSuccess] = useState(false);
+  const [career, setCareer] = useState('');
 
-  const selectedCareer = (() => {
-    try { return JSON.parse(localStorage.getItem('harmony_selected_career')); } catch { return null; }
-  })();
-
-  const fetchRoadmap = useCallback((note) => {
+  const fetchRoadmapData = useCallback(async () => {
     setLoading(true);
     setError('');
-    getCareerRoadmap(selectedCareer?.title, note)
-      .then(setRoadmap)
-      .catch(e => setError(e.message || 'Failed to load roadmap'))
-      .finally(() => setLoading(false));
-  }, [selectedCareer?.title]);
+    try {
+      // 1. Try to get existing active roadmap
+      const data = await roadmapApi.getActiveRoadmap();
+      setRoadmap(data);
+    } catch (e) {
+      // 2. If no roadmap exists, get the selected career from DATABASE
+      try {
+        const selection = await getSelectedCareer();
+        
+        if (selection && selection.career_title) {
+          setCareer(selection.career_title);
+          // 3. Generate using the title from DB
+          const generated = await roadmapApi.generateRoadmap(selection.career_title);
+          await roadmapApi.saveRoadmap(generated);
+          const active = await roadmapApi.getActiveRoadmap();
+          setRoadmap(active);
+        } else {
+          setError('Please select a career recommendation first.');
+        }
+      } catch (err) {
+        setError(err.message || 'Failed to load roadmap. Ensure you have an active selection.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate]);
 
-  const handleAdjust = () => {
-    setAdjusting(true);
-    setAdjustSuccess(false);
-    setAdjustOpen(false);
-    getCareerRoadmap(selectedCareer?.title, adjustNote || undefined)
-      .then(data => {
-        setRoadmap(data);
-        setAdjustNote('');
-        setAdjustSuccess(true);
-        setTimeout(() => setAdjustSuccess(false), 4000);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      })
-      .catch(e => setError(e.message || 'Adjustment failed. Please try again.'))
-      .finally(() => setAdjusting(false));
+  useEffect(() => {
+    fetchRoadmapData();
+  }, [fetchRoadmapData]);
+
+  const handleToggleTask = async (taskId, phaseId) => {
+    // Optimistic Update
+    setRoadmap(prev => {
+      if (!prev) return prev;
+      const newPhases = prev.phases.map(p => {
+        if (p.id !== phaseId) return p;
+        const newTasks = p.tasks.map(t => {
+          if (t.id !== taskId) return t;
+          return { ...t, status: t.status === 'Completed' ? 'Not Started' : 'Completed' };
+        });
+        
+        const completed = newTasks.filter(t => t.status === 'Completed').length;
+        const pct = (completed / newTasks.length) * 100;
+        return { ...p, tasks: newTasks, progress_percentage: pct };
+      });
+
+      const globalPct = newPhases.reduce((acc, p) => acc + p.progress_percentage, 0) / newPhases.length;
+      return { ...prev, phases: newPhases, progress_percentage: globalPct };
+    });
+
+    try {
+      const result = await roadmapApi.toggleTaskComplete(taskId);
+      // Sync with server result for accuracy
+      setRoadmap(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          progress_percentage: result.total_progress,
+          phases: prev.phases.map(p => p.id === phaseId ? { ...p, progress_percentage: result.phase_progress } : p)
+        };
+      });
+    } catch (err) {
+      console.error("Task toggle failed", err);
+    }
   };
 
-  useEffect(() => { fetchRoadmap(); }, [fetchRoadmap]);
-
-  const totalWeeks = roadmap?.phases?.reduce((sum, p) => sum + (p.duration_weeks || 0), 0) || 0;
-  const levelMeta = roadmap ? (LEVEL_META[roadmap.student_level] || LEVEL_META.BEGINNER) : null;
+  const globalProgress = roadmap?.progress_percentage || 0;
 
   if (loading) {
     return (
@@ -239,8 +260,7 @@ export default function Roadmap() {
               <Target size={36} className="text-white" />
             </div>
           </div>
-          <h2 className="text-2xl font-extrabold text-slate-900 mb-3">Building your roadmap...</h2>
-          <p className="text-slate-500 font-medium">Creating a personalised step-by-step plan just for you</p>
+          <h2 className="text-2xl font-extrabold text-slate-900 mb-3">Syncing Roadmap...</h2>
           <Loader2 size={20} className="animate-spin text-blue-500 mx-auto mt-4" />
         </motion.div>
       </div>
@@ -252,312 +272,132 @@ export default function Roadmap() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans p-6">
         <div className="bg-white rounded-3xl shadow-sm border border-red-100 p-10 max-w-md w-full text-center">
           <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-extrabold text-slate-900 mb-3">Roadmap unavailable</h2>
-          <p className="text-slate-500 font-medium mb-6">{error || 'Complete your profile and assessments to generate a personalised roadmap.'}</p>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={fetchRoadmap}
-              className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
-            >
-              <RefreshCw size={16} /> Retry
-            </button>
-            <button onClick={() => navigate('/dashboard')} className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-all">
-              Back to Dashboard
-            </button>
-          </div>
+          <h2 className="text-2xl font-extrabold text-slate-900 mb-3">No active roadmap</h2>
+          <p className="text-slate-500 font-medium mb-6">{error || 'Generate a roadmap to start tracking your journey.'}</p>
+          <button onClick={() => navigate('/career-recommendations')} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all">
+            Find Career Matches
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <div className="min-h-screen bg-slate-50 font-sans pb-20">
+      {/* Top Header */}
+      <div className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
         <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-semibold">
           <ArrowLeft size={18} /> Dashboard
         </button>
         <div className="flex items-center gap-2">
           <Target size={20} className="text-blue-500" />
-          <span className="text-lg font-extrabold text-slate-800">Your Career Roadmap</span>
+          <span className="text-lg font-extrabold text-slate-800">Real-Time Career Track</span>
         </div>
-        <div className="w-24" />
+        <div className="hidden sm:block">
+          <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-full border border-slate-100">
+             <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-tighter">Global Journey</div>
+             <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500" style={{ width: `${globalProgress}%` }} />
+             </div>
+             <div className="text-xs font-black text-blue-600">{Math.round(globalProgress)}%</div>
+          </div>
+        </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-10">
-        {/* Hero Section */}
+        {/* Hero Section with Progress */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-blue-600 to-sky-400 rounded-3xl p-10 text-white mb-8 relative overflow-hidden"
+          className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-10 text-white mb-8 relative overflow-hidden shadow-2xl"
         >
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4" />
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full blur-2xl translate-y-1/4 -translate-x-1/4" />
-
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4" />
+          
           <div className="relative z-10">
-            {selectedCareer && (
-              <span className="px-3 py-1.5 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
-                🎯 Your Selected Career
-              </span>
-            )}
-            <h1 className="text-4xl font-extrabold mb-3 leading-tight">
-              {selectedCareer?.title || roadmap.career_title}
-            </h1>
-            <p className="text-blue-100 font-medium text-lg max-w-xl mb-8">
-              {selectedCareer?.rationale || `A personalised roadmap to become a ${roadmap.career_title}.`}
-            </p>
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <span className="px-3 py-1 bg-blue-500/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-[0.2em] mb-4 inline-block border border-blue-500/30 text-blue-300">
+                  Active Mission
+                </span>
+                <h1 className="text-4xl font-extrabold mb-2 tracking-tight">{roadmap.title}</h1>
+                <p className="text-slate-400 font-medium">Level: {roadmap.student_level} | Status: {roadmap.status}</p>
+              </div>
+              <div className="text-right">
+                <div className="text-4xl font-black text-blue-400">{Math.round(globalProgress)}%</div>
+                <div className="text-[10px] font-bold text-slate-500 uppercase">Complete</div>
+              </div>
+            </div>
 
-            <div className="flex flex-wrap gap-4">
-              <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-5 py-3 border border-white/30">
-                <div className="text-white/70 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <Clock size={11} /> Total Duration
+            <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden mb-8">
+              <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: `${globalProgress}%` }}
+                className="h-full bg-gradient-to-r from-blue-500 to-sky-400"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                <div className="text-slate-500 text-[10px] font-bold uppercase mb-1 flex items-center gap-1">
+                  <Layers size={12} /> Phases
                 </div>
-                <div className="text-xl font-extrabold">{roadmap.total_duration || `${totalWeeks} Weeks`}</div>
+                <div className="text-lg font-bold">{roadmap.phases?.length || 0} Total</div>
               </div>
-              {roadmap.daily_commitment && (
-                <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-5 py-3 border border-white/30">
-                  <div className="text-white/70 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Zap size={11} /> Daily Commitment
-                  </div>
-                  <div className="text-xl font-extrabold">{roadmap.daily_commitment}</div>
+              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
+                <div className="text-slate-500 text-[10px] font-bold uppercase mb-1 flex items-center gap-1">
+                  <CheckCircle2 size={12} /> Tasks
                 </div>
-              )}
-              <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-5 py-3 border border-white/30">
-                <div className="text-white/70 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <BarChart2 size={11} /> Difficulty
+                <div className="text-lg font-bold">
+                  {roadmap.phases?.reduce((acc, p) => acc + p.tasks.filter(t => t.status === 'Completed').length, 0)} Done
                 </div>
-                <div className="text-xl font-extrabold">{roadmap.difficulty_level}</div>
               </div>
-              <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-5 py-3 border border-white/30">
-                <div className="text-white/70 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <Layers size={11} /> Phases
-                </div>
-                <div className="text-xl font-extrabold">{roadmap.phases?.length || 0}</div>
-              </div>
-              {roadmap.student_level && levelMeta && (
-                <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-5 py-3 border border-white/30">
-                  <div className="text-white/70 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Brain size={11} /> Your Level
-                  </div>
-                  <div className="text-xl font-extrabold">{levelMeta.label}</div>
-                </div>
-              )}
             </div>
           </div>
         </motion.div>
 
-        {/* Mentor & Parent Adjustments */}
-        {(roadmap.mentor_adjustments || roadmap.parent_adjustments) && (
-          <div className="grid sm:grid-cols-2 gap-4 mb-8">
-            {roadmap.mentor_adjustments && (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-violet-50 border border-violet-200 rounded-2xl p-5"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <UserCheck size={18} className="text-violet-600" />
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-violet-700">Mentor's Note</span>
-                </div>
-                <p className="text-violet-800 font-medium text-sm">{roadmap.mentor_adjustments}</p>
-              </motion.div>
-            )}
-            {roadmap.parent_adjustments && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-sky-50 border border-sky-200 rounded-2xl p-5"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <Users size={18} className="text-sky-600" />
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-sky-700">Parent's Note</span>
-                </div>
-                <p className="text-sky-800 font-medium text-sm">{roadmap.parent_adjustments}</p>
-              </motion.div>
-            )}
-          </div>
-        )}
-
-        {/* Phase Overview Pills */}
-        <div className="flex flex-wrap gap-2 mb-8">
-          {roadmap.phases?.map((phase, i) => {
-            const meta = IMPORTANCE_META[phase.importance] || IMPORTANCE_META.STRATEGIC;
-            return (
-              <div key={i} className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-bold ${meta.bg} ${meta.border} ${meta.text}`}>
-                <span className="w-5 h-5 rounded-full bg-current text-white flex items-center justify-center" style={{ opacity: 0.8 }}>
-                  <span style={{ opacity: 1.5 }}>{i + 1}</span>
-                </span>
-                {phase.phase_title}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Phases Timeline */}
+        {/* Learning Timeline */}
         <div className="space-y-6">
-          <div className="flex items-center gap-3 mb-6">
-            <Zap size={20} className="text-blue-500" />
-            <h2 className="text-xl font-extrabold text-slate-800">Your Learning Path</h2>
-            <span className="text-sm font-bold text-slate-400">Click any phase to expand</span>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Zap size={20} className="text-blue-500" />
+              <h2 className="text-xl font-extrabold text-slate-800">Interactive Path</h2>
+            </div>
+            <div className="text-xs font-bold text-slate-400 flex items-center gap-1">
+               <Sparkles size={12} /> Tasks sync automatically
+            </div>
           </div>
 
           {roadmap.phases?.map((phase, i) => (
             <PhaseCard
-              key={i}
+              key={phase.id}
               phase={phase}
               index={i}
               totalPhases={roadmap.phases.length}
+              onToggleTask={handleToggleTask}
             />
           ))}
         </div>
 
-        {/* Adjust My Path */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="mt-12"
-        >
-          {/* Success toast */}
-          <AnimatePresence>
-            {adjustSuccess && (
-              <motion.div
-                initial={{ opacity: 0, y: -12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-2xl px-5 py-4 mb-4"
-              >
-                <CheckCircle2 size={20} className="text-emerald-500 shrink-0" />
-                <div>
-                  <p className="font-bold text-emerald-800 text-sm">Roadmap adjusted!</p>
-                  <p className="text-emerald-600 text-xs font-medium">Your path has been regenerated with the latest feedback and your notes.</p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-200 rounded-3xl overflow-hidden">
-            {/* Header row — always visible */}
-            <button
-              onClick={() => setAdjustOpen(o => !o)}
-              className="w-full flex items-center justify-between p-6 text-left"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-violet-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
-                  <Wand2 size={22} className="text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-extrabold text-slate-800">Adjust My Path</h3>
-                  <p className="text-sm font-medium text-slate-500">
-                    Regenerate your roadmap incorporating mentor &amp; parent feedback plus your own notes
-                  </p>
-                </div>
-              </div>
-              <div className={`shrink-0 w-8 h-8 rounded-full bg-white border border-indigo-200 flex items-center justify-center transition-transform ${adjustOpen ? 'rotate-90' : ''}`}>
-                <ChevronDown size={16} className="text-indigo-500" style={{ transform: adjustOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
-              </div>
-            </button>
-
-            {/* Expandable body */}
-            <AnimatePresence>
-              {adjustOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-6 pb-6 space-y-5">
-                    {/* Context cards */}
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div className="bg-white rounded-2xl border border-violet-100 p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <UserCheck size={15} className="text-violet-500" />
-                          <span className="text-xs font-extrabold uppercase tracking-wider text-violet-600">Mentor Feedback</span>
-                        </div>
-                        <p className="text-sm text-slate-600 font-medium">
-                          {roadmap.mentor_adjustments || 'No mentor feedback yet — book a session to get personalised guidance.'}
-                        </p>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-sky-100 p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Users size={15} className="text-sky-500" />
-                          <span className="text-xs font-extrabold uppercase tracking-wider text-sky-600">Parent Feedback</span>
-                        </div>
-                        <p className="text-sm text-slate-600 font-medium">
-                          {roadmap.parent_adjustments || 'No parent feedback yet — your parent can submit notes from their dashboard.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Student's own note */}
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-2">
-                        <MessageSquare size={15} className="text-indigo-500" />
-                        Your adjustment request <span className="font-medium text-slate-400">(optional)</span>
-                      </label>
-                      <textarea
-                        value={adjustNote}
-                        onChange={e => setAdjustNote(e.target.value)}
-                        rows={3}
-                        placeholder="e.g. I want more focus on practical projects, I only have 1 hour daily on weekdays, I'd like more resources for each week..."
-                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-400 text-sm resize-none"
-                      />
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={handleAdjust}
-                        disabled={adjusting}
-                        className="flex-1 py-3.5 bg-gradient-to-r from-indigo-500 to-violet-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:-translate-y-0.5 hover:shadow-indigo-300 disabled:opacity-60 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                      >
-                        {adjusting ? (
-                          <><Loader2 size={16} className="animate-spin" /> Regenerating...</>
-                        ) : (
-                          <><Sparkles size={16} /> Regenerate Roadmap</>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => { setAdjustOpen(false); setAdjustNote(''); }}
-                        className="px-5 py-3.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-
-                    <p className="text-xs font-medium text-slate-400 text-center">
-                      The AI will regenerate your full roadmap considering all available context. This may take a moment.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </motion.div>
-
-        {/* Footer CTA */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="mt-6 bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-8 text-white text-center"
-        >
-          <div className="text-4xl mb-4">🚀</div>
-          <h3 className="text-2xl font-extrabold mb-3">Your journey starts now!</h3>
-          <p className="text-slate-300 font-medium max-w-md mx-auto mb-6">
-            Start with Phase 1 and work your way through. Each milestone you complete brings you closer to your dream career.
-          </p>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-sky-400 text-white font-bold rounded-2xl shadow-lg hover:-translate-y-0.5 transition-all"
+        {/* Floating Start CTA if overview */}
+        {roadmap.status === 'Overview' && (
+          <motion.div 
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            className="fixed bottom-8 left-0 right-0 px-6 z-50 pointer-events-none"
           >
-            Track Progress on Dashboard →
-          </button>
-        </motion.div>
+            <div className="max-w-md mx-auto pointer-events-auto">
+              <button 
+                onClick={async () => {
+                   await roadmapApi.startRoadmap();
+                   fetchRoadmapData();
+                }}
+                className="w-full py-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-lg rounded-2xl shadow-2xl shadow-blue-500/40 flex items-center justify-center gap-3 hover:-translate-y-1 transition-all"
+              >
+                🚀 INITIATE CAREER JOURNEY
+              </button>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

@@ -57,3 +57,18 @@ export const toggleTaskComplete = (taskId) => {
 export const getAIRecommendations = () => {
   return apiClient.post("/api/v1/ai/recommend", {});
 };
+/**
+ * POST /api/v1/ai/select-career
+ * Persists the chosen career to the database.
+ */
+export const selectCareerInDB = (careerTitle) => {
+  return apiClient.post("/api/v1/ai/select-career", { career_title: careerTitle });
+};
+
+/**
+ * GET /api/v1/ai/selected-career
+ * Fetches the currently saved career from the database.
+ */
+export const getSelectedCareer = () => {
+  return apiClient.get("/api/v1/ai/selected-career");
+};

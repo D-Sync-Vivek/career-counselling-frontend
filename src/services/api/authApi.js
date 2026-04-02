@@ -19,6 +19,7 @@ export const loginUser = async ({ email, password }) => {
     userId: payload?.user_id || null,
   };
 };
+
 /**
  * Register — JSON body
  * Returns: { id, email, role }
@@ -26,3 +27,13 @@ export const loginUser = async ({ email, password }) => {
 export const registerUser = async ({ email, password, full_name, role = "student" }) => {
   return apiClient.post("/api/v1/auth/register", { email, password, full_name, role });
 };
+
+/**
+ * GET /api/v1/auth/users/me
+ * Returns: {
+ *   progress: { profile_done, personality_done, aptitude_done },
+ *   personality_data: { dominant_traits[], raw_scores{} },
+ *   apti_data: { quantitative, logical, verbal, max_score }
+ * }
+ */
+export const getCurrentUser = () => apiClient.get("/api/v1/auth/users/me");
