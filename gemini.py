@@ -3,7 +3,7 @@ import sys
 
 # 1. Setup the client
 # PRO TIP: Replace 'YOUR_API_KEY' with your actual key
-client = genai.Client(api_key="AIzaSyC5JF1susTbv6KVLzEkTyuVI3H2mClvZe4")
+client = genai.Client(api_key="AIzaSyDDhH7q8EPRz0gty5bDEFZsU6dWIRXaO4g")
 
 # 2. Get the prompt from the terminal
 user_prompt = " ".join(sys.argv[1:])
