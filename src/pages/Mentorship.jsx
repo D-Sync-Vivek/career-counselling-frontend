@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Users, MessageSquare, Calendar, ChevronRight, Star, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, Calendar, Star, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { mentorshipApi } from '../services/api/mentorshipApi';
 
@@ -69,12 +69,16 @@ export default function Mentorship() {
                 </p>
 
                 <div className="space-y-3">
-                  <button 
+                  <button
+                    onClick={() => navigate(`/mentorship/${mentor.id}`)}
                     className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
                   >
                     <Calendar size={18} /> Book Session
                   </button>
-                  <button className="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all">
+                  <button
+                    onClick={() => navigate(`/mentorship/${mentor.id}`)}
+                    className="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all"
+                  >
                     View Full Profile
                   </button>
                 </div>

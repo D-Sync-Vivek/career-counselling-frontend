@@ -86,5 +86,11 @@ export const mentorshipApi = {
       availability_id: availabilityId,
       message: message
     });
-  }
+  },
+
+  /** POST /api/v1/sessions/{session_id}/join-video
+   * Returns { token, meeting_id } — pass token to VideoCallRoom.
+   */
+  joinVideo: (sessionId) =>
+    apiClient.post(`/api/v1/sessions/${sessionId}/join-video`, {}),
 };

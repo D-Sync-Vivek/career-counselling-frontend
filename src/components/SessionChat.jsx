@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Send, Wifi, WifiOff, Loader2, ArrowLeft, Check, CheckCheck } from 'lucide-react';
+import { X, Send, Wifi, WifiOff, Loader2, ArrowLeft, CheckCheck } from 'lucide-react';
 import { toISTTime } from '../utils/time';
 
 // Derive WS base from the same host as the HTTP API so they always match.
@@ -25,7 +25,7 @@ function Avatar({ name, size = 'md' }) {
   );
 }
 
-export default function SessionChat({ sessionId, otherPartyName, onClose }) {
+export default function SessionChat({ otherUserId, otherPartyName, onClose }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [wsStatus, setWsStatus] = useState('connecting');
@@ -45,7 +45,7 @@ export default function SessionChat({ sessionId, otherPartyName, onClose }) {
     let isMounted = true;
 
     const ws = new WebSocket(
-      `${WS_BASE}/api/v1/mentorship/sessions/${sessionId}/chat/?token=${token}`
+      `${WS_BASE}/api/v1/mentorship/chat/${otherUserId}/?token=${token}`
     );
     wsRef.current = ws;
 
@@ -96,7 +96,7 @@ export default function SessionChat({ sessionId, otherPartyName, onClose }) {
       }
       wsRef.current = null;
     };
-  }, [sessionId, token]);
+  }, [otherUserId, token]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -196,7 +196,7 @@ export default function SessionChat({ sessionId, otherPartyName, onClose }) {
           {wsStatus === 'connecting' && messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-3">
               <Loader2 size={30} className="animate-spin text-slate-600" />
-              <span className="text-sm text-slate-500">Joining session room...</span>
+              <span className="text-sm text-slate-500">Connecting to chat...</span>
             </div>
           )}
 
@@ -204,7 +204,7 @@ export default function SessionChat({ sessionId, otherPartyName, onClose }) {
             <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
               <WifiOff size={30} className="text-red-400" />
               <span className="text-sm text-slate-400">
-                {errorMsg || 'Could not connect. The session may be locked or already ended.'}
+                {errorMsg || 'Could not connect. Make sure the mentorship request is approved.'}
               </span>
             </div>
           )}
@@ -284,7 +284,7 @@ export default function SessionChat({ sessionId, otherPartyName, onClose }) {
             </motion.button>
           </div>
           <p className="text-center text-[10px] text-slate-700 mt-2 tracking-wide">
-            Session chat · Messages are saved to your record
+            Messages are saved to your record
           </p>
         </div>
       </motion.div>

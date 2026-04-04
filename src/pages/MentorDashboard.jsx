@@ -5,8 +5,9 @@ import {
   Calendar, BarChart2, LogOut, Bell, Star, CheckCircle2,
   Plus, Loader2, AlertCircle, Clock, ClipboardList, UserCheck,
   MessageSquare, Inbox, StopCircle, X, Wifi, WifiOff, Info,
-  Check, Users, Send
+  Check, Users, Send, PhoneCall
 } from 'lucide-react';
+import VideoCallRoom from '../components/VideoCallRoom';
 import { useNavigate } from 'react-router-dom';
 import { getUserDisplayName, clearUserSession, setUserFullName } from '../utils/jwt';
 import { mentorshipApi } from '../services/api/mentorshipApi';
@@ -58,15 +59,17 @@ function Toast({ message, type, onClose }) {
 function ChatInterface({ session, onClose, onSessionEnded }) {
   const name     = getUserDisplayName();
   const token    = localStorage.getItem('token');
-  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
-  const wsUrl    = `${BASE_URL}/api/v1/mentorship/sessions/${session.session_id}/chat/?token=${token}`;
+  const HTTP_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+  const WS_BASE  = HTTP_BASE.replace(/^http/, 'ws');
+  const wsUrl    = `${WS_BASE}/api/v1/mentorship/chat/${session.other_user_id}/?token=${token}`;
 
   const [wsState,  setWsState]  = useState('connecting');
   const [errorMsg, setErrorMsg] = useState('');
   const [messages, setMessages] = useState([]);
   const [input,    setInput]    = useState('');
-  const wsRef     = useRef(null);
-  const scrollRef = useRef(null);
+  const wsRef      = useRef(null);
+  const scrollRef  = useRef(null);
+  const pendingSent = useRef(new Set());
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -83,7 +86,11 @@ function ChatInterface({ session, onClose, onSessionEnded }) {
           return;
         }
         if (data.event === 'NEW_MESSAGE') {
-          setMessages(prev => [...prev, { sender: data.sender, text: data.message, timestamp: data.timestamp, isMe: data.sender === name }]);
+          if (pendingSent.current.has(data.message)) {
+            pendingSent.current.delete(data.message);
+            return;
+          }
+          setMessages(prev => [...prev, { sender: data.sender, text: data.message, timestamp: data.timestamp, isMe: false }]);
         }
         if (data.event === 'SESSION_ENDED') {
           setMessages(prev => [...prev, { system: true, text: '✅ Session concluded. Please submit your feedback.' }]);
@@ -99,8 +106,16 @@ function ChatInterface({ session, onClose, onSessionEnded }) {
 
   const sendMessage = (e) => {
     e?.preventDefault();
-    if (!input.trim() || wsRef.current?.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ message: input.trim() }));
+    const text = input.trim();
+    if (!text || wsRef.current?.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ message: text }));
+    pendingSent.current.add(text);
+    setMessages(prev => [...prev, {
+      sender: name,
+      text,
+      timestamp: new Date().toISOString(),
+      isMe: true,
+    }]);
     setInput('');
   };
 
@@ -344,7 +359,7 @@ function useCountdown(secondsInit) {
   return { display: `${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`, isLive: secs <= 300 };
 }
 
-function SessionCard({ session, onEnd, endingId, onJoin }) {
+function SessionCard({ session, onEnd, endingId, onJoin, onJoinVideo, joiningVideoId }) {
   const { display, isLive } = useCountdown(session.seconds_until_start);
   const liveStatus    = session.is_live || isLive;
   const hasAutoOpened = useRef(false);
@@ -377,18 +392,35 @@ function SessionCard({ session, onEnd, endingId, onJoin }) {
         {liveStatus ? (
           <>
             <button onClick={() => onJoin(session)}
-              className="px-5 py-2.5 bg-emerald-600 text-white text-xs font-black rounded-xl hover:bg-emerald-700 flex items-center gap-2 shadow-lg shadow-emerald-200 active:scale-95"
+              className="px-4 py-2.5 bg-emerald-600 text-white text-xs font-black rounded-xl hover:bg-emerald-700 flex items-center gap-2 shadow-lg shadow-emerald-200 active:scale-95"
             >
-              <MessageSquare size={14} /> JOIN CHAT
+              <MessageSquare size={14} /> CHAT
+            </button>
+            <button
+              onClick={() => onJoinVideo(session)}
+              disabled={joiningVideoId === session.session_id}
+              className="px-4 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-200 disabled:opacity-50 active:scale-95"
+            >
+              {joiningVideoId === session.session_id
+                ? <><Loader2 size={14} className="animate-spin" /> JOINING...</>
+                : <><PhoneCall size={14} /> JOIN VIDEO</>
+              }
             </button>
             <button onClick={() => onEnd(session.session_id)} disabled={endingId === session.session_id}
-              className="px-5 py-2.5 bg-red-500 text-white text-xs font-black rounded-xl hover:bg-red-600 flex items-center gap-2 shadow-lg shadow-red-200 disabled:opacity-50 active:scale-95"
+              className="px-4 py-2.5 bg-red-500 text-white text-xs font-black rounded-xl hover:bg-red-600 flex items-center gap-2 shadow-lg shadow-red-200 disabled:opacity-50 active:scale-95"
             >
               {endingId === session.session_id ? <Loader2 size={14} className="animate-spin" /> : <StopCircle size={14} />} END
             </button>
           </>
         ) : (
-          <div className="px-4 py-2 bg-slate-100 rounded-xl text-slate-600 text-xs font-black tabular-nums">{display}</div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => onJoin(session)}
+              className="px-4 py-2.5 bg-slate-200 text-slate-700 text-xs font-black rounded-xl hover:bg-slate-300 flex items-center gap-2 active:scale-95"
+            >
+              <MessageSquare size={14} /> CHAT
+            </button>
+            <div className="px-4 py-2 bg-slate-100 rounded-xl text-slate-600 text-xs font-black tabular-nums">{display}</div>
+          </div>
         )}
       </div>
     </motion.div>
@@ -396,10 +428,12 @@ function SessionCard({ session, onEnd, endingId, onJoin }) {
 }
 
 function SessionsTab({ toast }) {
-  const [sessions,   setSessions]   = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [endingId,   setEndingId]   = useState(null);
-  const [activeChat, setActiveChat] = useState(null);
+  const [sessions,      setSessions]      = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [endingId,      setEndingId]      = useState(null);
+  const [activeChat,    setActiveChat]    = useState(null);
+  const [activeVideo,   setActiveVideo]   = useState(null); // { token, meeting_id }
+  const [joiningVideoId, setJoiningVideoId] = useState(null);
 
   const fetchSessions = useCallback(async () => {
     try { setSessions((await mentorshipApi.getUpcomingSessions()) || []); }
@@ -409,7 +443,20 @@ function SessionsTab({ toast }) {
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
-  const handleJoin        = useCallback((session) => setActiveChat(session), []);
+  const handleJoin = useCallback((session) => setActiveChat(session), []);
+
+  const handleJoinVideo = useCallback(async (session) => {
+    setJoiningVideoId(session.session_id);
+    try {
+      const data = await mentorshipApi.joinVideo(session.session_id);
+      setActiveVideo({ token: data.token, meeting_id: data.meeting_id });
+    } catch (err) {
+      toast(err.message || 'Could not join video call.', 'error');
+    } finally {
+      setJoiningVideoId(null);
+    }
+  }, [toast]);
+
   const handleSessionEnded = useCallback((sessionId) => {
     setSessions(prev => prev.filter(s => s.session_id !== sessionId));
     setActiveChat(null);
@@ -444,13 +491,56 @@ function SessionsTab({ toast }) {
         ) : (
           <div className="space-y-4">
             <AnimatePresence mode="popLayout">
-              {sessions.map(s => <SessionCard key={s.session_id} session={s} onEnd={handleEnd} endingId={endingId} onJoin={handleJoin} />)}
+              {sessions.map(s => (
+                <SessionCard
+                  key={s.session_id}
+                  session={s}
+                  onEnd={handleEnd}
+                  endingId={endingId}
+                  onJoin={handleJoin}
+                  onJoinVideo={handleJoinVideo}
+                  joiningVideoId={joiningVideoId}
+                />
+              ))}
             </AnimatePresence>
           </div>
         )}
       </div>
+
+      {/* Chat modal */}
       <AnimatePresence>
         {activeChat && <ChatInterface session={activeChat} onClose={() => setActiveChat(null)} onSessionEnded={handleSessionEnded} />}
+      </AnimatePresence>
+
+      {/* Dyte video call — full screen */}
+      <AnimatePresence>
+        {activeVideo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-black flex flex-col"
+          >
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-900 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2 text-white">
+                <PhoneCall size={16} className="text-blue-400" />
+                <span className="font-bold text-sm">Video Call</span>
+                {activeVideo.meeting_id && (
+                  <span className="text-xs text-slate-400 ml-2">ID: {activeVideo.meeting_id}</span>
+                )}
+              </div>
+              <button
+                onClick={() => setActiveVideo(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-xs font-bold transition-colors"
+              >
+                <X size={14} /> End Call
+              </button>
+            </div>
+            <div className="flex-1">
+              <VideoCallRoom authToken={activeVideo.token} />
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </>
   );

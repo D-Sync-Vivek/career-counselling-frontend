@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Map, Video, Settings, LogOut,
   Bell, User, Brain, Zap, Sparkles, ChevronRight, CheckCircle2,
-  Lock, ArrowRight, Target, Users, UserCheck, Loader2, TrendingUp,
-  CalendarClock, X, Wifi, WifiOff, Radio
+  Lock, ArrowRight, Users, Loader2, TrendingUp,
+  CalendarClock, X, Radio, MessageSquare, PhoneCall
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -15,10 +15,11 @@ import { roadmapApi } from '../services/api/roadmapApi';
 import { parentStudentApi } from '../services/api/parentStudentApi';
 import { mentorshipApi } from '../services/api/mentorshipApi';
 import { apiClient } from '../services/api/apiClient';
+import VideoCallRoom from '../components/VideoCallRoom';
 
 import confetti from 'canvas-confetti';
 import { toast } from 'react-hot-toast';
-import { SplitText, BlurText, ShinyOverlay } from '../components/ui/Animations';
+import { SplitText, ShinyOverlay } from '../components/ui/Animations';
 import SessionChat from '../components/SessionChat';
 
 // ============================================================================
@@ -167,24 +168,6 @@ function AptitudeCompletedCard({ aptiData }) {
   );
 }
 
-function ActiveRoadmap() {
-  const navigate = useNavigate();
-  return (
-    <div className="relative z-10 flex items-center justify-between">
-      <div>
-        <h4 className="text-xl font-bold text-white mb-2">Roadmap is Active</h4>
-        <p className="text-white/70 text-sm">You are currently tracking this career path.</p>
-        <button
-          onClick={() => navigate('/roadmap')}
-          className="mt-4 px-6 py-2 bg-white text-emerald-600 font-bold rounded-xl text-sm"
-        >
-          View Roadmap
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ============================================================================
 // SESSIONS PANEL COMPONENTS
 // ============================================================================
@@ -199,18 +182,15 @@ function formatCountdown(secs) {
   return `${s}s`;
 }
 
-// Backend WS room unlocks at 2.5 minutes (150s) before start
-const WS_UNLOCK_SECONDS = 150;
-
-function SessionBadge({ session, onJoin }) {
+function SessionBadge({ session, onChat, onJoinVideo, joiningVideoId }) {
   const [secondsLeft, setSecondsLeft] = useState(
-    Math.max(0, session.seconds_until_start)
+    Math.max(0, session.seconds_until_start ?? 0)
   );
-  // Only show Join when WS room is actually open (within 2.5 min of start)
-  const isLive = secondsLeft <= WS_UNLOCK_SECONDS;
+  const isLive = session.is_live || secondsLeft <= 0;
+  const isJoining = joiningVideoId === session.session_id;
 
   useEffect(() => {
-    if (session.is_live || session.seconds_until_start <= 0) return;
+    if (isLive || !session.seconds_until_start) return;
     const id = setInterval(() => {
       setSecondsLeft(prev => {
         if (prev <= 1) { clearInterval(id); return 0; }
@@ -218,7 +198,7 @@ function SessionBadge({ session, onJoin }) {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [session.is_live, session.seconds_until_start]);
+  }, [isLive, session.seconds_until_start]);
 
   const scheduledTime = toISTTime(session.scheduled_at);
   const scheduledDate = toISTDate(session.scheduled_at);
@@ -227,10 +207,8 @@ function SessionBadge({ session, onJoin }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative flex items-center gap-4 px-4 py-3.5 rounded-2xl border transition-all ${
-        isLive
-          ? 'bg-emerald-50 border-emerald-200'
-          : 'bg-white border-slate-100'
+      className={`relative flex flex-col gap-3 px-4 py-3.5 rounded-2xl border transition-all ${
+        isLive ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'
       }`}
     >
       {isLive && (
@@ -240,40 +218,54 @@ function SessionBadge({ session, onJoin }) {
         </span>
       )}
 
-      {/* Avatar */}
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white shrink-0 ${
-        isLive ? 'bg-emerald-500' : 'bg-slate-700'
-      }`}>
-        {session.other_party_name?.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+      {/* Top row: avatar + info */}
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white shrink-0 ${
+          isLive ? 'bg-emerald-500' : 'bg-slate-700'
+        }`}>
+          {session.other_party_name?.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-slate-800 text-sm truncate leading-tight">{session.other_party_name}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{scheduledDate} · {scheduledTime}</p>
+          {!isLive && secondsLeft > 0 && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-xs font-bold text-amber-600">Starts in {formatCountdown(secondsLeft)}</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-slate-800 text-sm truncate leading-tight">{session.other_party_name}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{scheduledDate} · {scheduledTime}</p>
-        {!isLive && secondsLeft > 0 && (
-          <div className="flex items-center gap-1.5 mt-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-xs font-bold text-amber-600">Starts in {formatCountdown(secondsLeft)}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Join button (only when live) */}
-      {isLive && (
+      {/* Action buttons row */}
+      <div className="flex gap-2">
+        {/* Chat — always available for approved connections */}
         <motion.button
           whileTap={{ scale: 0.93 }}
-          onClick={() => onJoin(session)}
-          className="px-4 py-2 bg-emerald-500 text-white text-xs font-black rounded-xl shadow-sm hover:bg-emerald-600 transition-colors shrink-0"
+          onClick={() => onChat(session)}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
         >
-          Join
+          <MessageSquare size={13} /> Chat
         </motion.button>
-      )}
+
+        {/* Join Video Call */}
+        <motion.button
+          whileTap={{ scale: 0.93 }}
+          onClick={() => onJoinVideo(session)}
+          disabled={isJoining}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isJoining
+            ? <><Loader2 size={13} className="animate-spin" /> Joining...</>
+            : <><PhoneCall size={13} /> Join Video</>
+          }
+        </motion.button>
+      </div>
     </motion.div>
   );
 }
 
-function SessionsPanel({ onClose, onJoin }) {
+function SessionsPanel({ onClose, onChat, onJoinVideo, joiningVideoId }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -307,8 +299,8 @@ function SessionsPanel({ onClose, onJoin }) {
               <CalendarClock size={18} className="text-blue-600" />
             </div>
             <div>
-              <h2 className="font-extrabold text-slate-800 text-sm">Upcoming Sessions</h2>
-              <p className="text-xs text-slate-400">Your scheduled mentor calls</p>
+              <h2 className="font-extrabold text-slate-800 text-sm">Sessions & Messages</h2>
+              <p className="text-xs text-slate-400">Chat or join video with your mentors</p>
             </div>
           </div>
           <button
@@ -336,7 +328,9 @@ function SessionsPanel({ onClose, onJoin }) {
               <SessionBadge
                 key={session.session_id}
                 session={session}
-                onJoin={onJoin}
+                onChat={onChat}
+                onJoinVideo={onJoinVideo}
+                joiningVideoId={joiningVideoId}
               />
             ))
           )}
@@ -344,7 +338,7 @@ function SessionsPanel({ onClose, onJoin }) {
 
         <div className="px-5 py-4 border-t border-slate-100 bg-white shrink-0">
           <p className="text-[10px] text-slate-400 text-center font-medium">
-            Session room unlocks 2.5 minutes before start
+            Chat is available anytime · Video opens a live Dyte call
           </p>
         </div>
       </motion.div>
@@ -367,7 +361,9 @@ export default function Dashboard() {
   const [recommendedMentors, setRecommendedMentors] = useState([]);
   const [loadingMentors, setLoadingMentors] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
-  const [activeChat, setActiveChat] = useState(null); // { session_id, other_party_name }
+  const [activeChat, setActiveChat] = useState(null); // { other_user_id, other_party_name }
+  const [activeVideoCall, setActiveVideoCall] = useState(null); // { token, meeting_id }
+  const [joiningVideoId, setJoiningVideoId] = useState(null);
 
   // Fetch Selected Career
   useEffect(() => {
@@ -430,6 +426,25 @@ export default function Dashboard() {
     }
   };
 
+  const handleJoinVideo = async (session) => {
+    setJoiningVideoId(session.session_id);
+    try {
+      const data = await mentorshipApi.joinVideo(session.session_id);
+      setShowSessionsPanel(false);
+      setActiveVideoCall({ token: data.token, meeting_id: data.meeting_id });
+    } catch (err) {
+      console.error('Failed to join video call:', err);
+      toast.error('Could not join video call. Please try again.');
+    } finally {
+      setJoiningVideoId(null);
+    }
+  };
+
+  const handleOpenChat = (session) => {
+    setShowSessionsPanel(false);
+    setActiveChat({ other_user_id: session.other_user_id, other_party_name: session.other_party_name });
+  };
+
   const handlePersonalityClick = () => {
     if (!progress.profileDone) return;
     navigate('/personality-test');
@@ -489,7 +504,8 @@ export default function Dashboard() {
             <NavItem icon={Zap} label="Aptitude Test" onClick={handleAptitudeClick} />
             <NavItem icon={Sparkles} label="Career Matches" onClick={() => navigate('/career-recommendations')} />
             <NavItem icon={Map} label="My Roadmap" onClick={() => navigate('/roadmap')} />
-            <NavItem icon={Video} label="Mentorship" />
+            <NavItem icon={Video} label="Mentorship" onClick={() => navigate('/mentorship')} />
+            <NavItem icon={MessageSquare} label="Messages" onClick={() => setShowSessionsPanel(true)} />
             <NavItem icon={CalendarClock} label="Sessions" onClick={() => setShowSessionsPanel(true)} />
             <NavItem icon={Settings} label="Settings" />
           </nav>
@@ -737,27 +753,57 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Sessions Drawer */}
+      {/* Sessions & Messages Drawer */}
       <AnimatePresence>
         {showSessionsPanel && (
           <SessionsPanel
             onClose={() => setShowSessionsPanel(false)}
-            onJoin={(session) => {
-              setShowSessionsPanel(false);
-              setActiveChat({ session_id: session.session_id, other_party_name: session.other_party_name });
-            }}
+            onChat={handleOpenChat}
+            onJoinVideo={handleJoinVideo}
+            joiningVideoId={joiningVideoId}
           />
         )}
       </AnimatePresence>
 
-      {/* Chat Modal */}
+      {/* Anytime Chat Modal */}
       <AnimatePresence>
         {activeChat && (
           <SessionChat
-            sessionId={activeChat.session_id}
+            otherUserId={activeChat.other_user_id}
             otherPartyName={activeChat.other_party_name}
             onClose={() => setActiveChat(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Dyte Video Call Modal */}
+      <AnimatePresence>
+        {activeVideoCall && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black flex flex-col"
+          >
+            <div className="flex items-center justify-between px-5 py-3 bg-slate-900 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2 text-white">
+                <PhoneCall size={16} className="text-blue-400" />
+                <span className="font-bold text-sm">Video Call</span>
+                {activeVideoCall.meeting_id && (
+                  <span className="text-xs text-slate-400 ml-2">ID: {activeVideoCall.meeting_id}</span>
+                )}
+              </div>
+              <button
+                onClick={() => setActiveVideoCall(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-xs font-bold transition-colors"
+              >
+                <X size={14} /> End Call
+              </button>
+            </div>
+            <div className="flex-1">
+              <VideoCallRoom authToken={activeVideoCall.token} />
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

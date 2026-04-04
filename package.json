@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dytesdk/react-ui-kit": "3.0",
+    "@dytesdk/react-web-core": "3.0",
     "@gsap/react": "^2.1.2",
     "@react-spring/web": "^10.0.3",
     "canvas-confetti": "^1.9.4",
