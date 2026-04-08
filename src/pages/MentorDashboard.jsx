@@ -258,7 +258,7 @@ function ChatInterface({ session, onClose, onSessionEnded }) {
 // ── OVERVIEW TAB ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ profileData, slots, pendingCount, onTabChange }) {
-  const name = getUserDisplayName();
+  const name = profileData?.full_name || getUserDisplayName();
 
   const stats = [
     { label: 'Active Slots',      value: slots.length,  icon: Calendar, color: 'emerald' },
@@ -1516,10 +1516,10 @@ export default function MentorDashboard() {
         <div className="p-8 border-t border-slate-100">
           <div className="bg-slate-50 p-4 rounded-2xl mb-6 flex items-center gap-3 border border-slate-100">
             <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-black shadow-md">
-              {name[0]?.toUpperCase()}
+              {(profileData?.full_name || name)[0]?.toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="font-black text-slate-800 truncate text-sm">{name}</p>
+              <p className="font-black text-slate-800 truncate text-sm">{profileData?.full_name || name}</p>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">MENTOR NODE</p>
             </div>
           </div>
