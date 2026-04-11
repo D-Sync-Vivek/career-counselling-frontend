@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Database Service
+  # Database Service (PostgreSQL)
   db:
     image: postgres:15-alpine
     container_name: career-ai-db
@@ -18,7 +18,7 @@ services:
   # FastAPI Backend Service
   backend:
     build: 
-      context: ./backend # Adjust path if your FastAPI code is in a subfolder
+      context: ./backend # Ensure this points to your FastAPI directory
       dockerfile: Dockerfile
     container_name: career-ai-backend
     restart: always
