@@ -13,7 +13,7 @@ import { getUserDisplayName, clearUserSession, setUserFullName } from '../utils/
 import { mentorshipApi } from '../services/api/mentorshipApi';
 import { chatApi } from '../services/api/chatApi';
 import { roadmapApi } from '../services/api/roadmapApi';
-
+import LanguageSelector from '../components/LanguageSelector';
 // ── SHARED UI ─────────────────────────────────────────────────────────────────
 
 function NavItem({ icon: Icon, label, active, onClick, badge }) {

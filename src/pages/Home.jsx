@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 
 // Component Imports
 import CloudBackground from '../components/layout/CloudBackground';
@@ -8,6 +9,7 @@ import AppShowcase from '../components/sections/AppShowcase';
 import RoleSelection from '../components/sections/RoleSelection';
 import Features from '../components/sections/Features';
 import Footer from '../components/layout/Footer';
+import LanguageSelector from '../components/LanguageSelector';
 
 export default function Home() {
   return (
@@ -17,6 +19,23 @@ export default function Home() {
       <div className="fixed inset-0 z-0 pointer-events-none">
         <CloudBackground />
       </div>
+
+      {/* FLOATING TOP-RIGHT CORNER (Language + Login) */}
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+        className="absolute top-6 right-6 md:top-8 md:right-12 z-50 flex items-center gap-5 bg-white/30 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/50 shadow-sm"
+      >
+        <LanguageSelector />
+        <div className="w-[2px] h-6 bg-slate-300/60 rounded-full"></div>
+        <Link 
+          to="/signin" 
+          className="text-slate-700 hover:text-blue-600 font-extrabold transition-colors pr-3"
+        >
+          Login
+        </Link>
+      </motion.div>
 
       <div className="relative z-10 flex flex-col w-full">
         

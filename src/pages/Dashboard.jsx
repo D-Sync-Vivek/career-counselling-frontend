@@ -17,6 +17,7 @@ import { mentorshipApi } from '../services/api/mentorshipApi';
 import { chatApi } from '../services/api/chatApi';
 import { apiClient } from '../services/api/apiClient';
 import VideoCallRoom from '../components/VideoCallRoom';
+  import LanguageSelector from '../components/LanguageSelector';
 
 import confetti from 'canvas-confetti';
 import { toast } from 'react-hot-toast';
@@ -325,6 +326,7 @@ function SessionsPanel({ onClose, onJoinVideo, joiningVideoId }) {
           >
             <X size={18} />
           </button>
+                  
         </div>
 
         {/* Content */}
@@ -551,7 +553,7 @@ export default function Dashboard() {
   const [activeChat, setActiveChat] = useState(null); // { other_user_id, other_party_name }
   const [activeVideoCall, setActiveVideoCall] = useState(null); // { token, meeting_id }
   const [joiningVideoId, setJoiningVideoId] = useState(null);
-
+  
   // Fetch Selected Career
   useEffect(() => {
     async function fetchSavedCareer() {
@@ -699,6 +701,7 @@ export default function Dashboard() {
             <NavItem icon={Settings} label="Settings" />
           </nav>
         </div>
+        
         <div className="p-4 border-t border-slate-100">
           <div className="px-4 py-3 mb-2 group cursor-pointer">
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 group-hover:text-blue-500 transition-colors">Journey Progress</div>
@@ -730,6 +733,12 @@ export default function Dashboard() {
               {currentPhase === 4 && "Your roadmap is ready. Start your journey today!"}
             </motion.p>
           </div>
+          <div className="flex items-center gap-900">
+  {/* Add it right before your Bell icon / Profile Avatar */}
+  <LanguageSelector />
+  
+ 
+</div>
           <div className="flex items-center gap-3">
             {/* Mobile logout button */}
             <button
@@ -744,6 +753,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 border-2 border-white shadow-sm flex items-center justify-center text-white font-extrabold text-sm">
               {name[0]?.toUpperCase()}
             </div>
+            
           </div>
         </header>
 
@@ -763,7 +773,7 @@ export default function Dashboard() {
             <PhaseStep number="4" label="My Roadmap" status={currentPhase === 4 ? 'active' : currentPhase > 4 ? 'done' : 'locked'} color="bg-gradient-to-r from-emerald-500 to-teal-400" />
           </div>
         </motion.div>
-
+        
         {/* Main Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
