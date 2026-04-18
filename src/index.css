@@ -54,3 +54,40 @@
   .animate-float-slow { animation: float 9s ease-in-out infinite; }
   .animate-float-slower { animation: float 14s ease-in-out infinite; }
 }
+/* ==========================================================================
+   GOOGLE TRANSLATE UI OVERRIDES (HIDE EVERYTHING)
+   ========================================================================== */
+
+/* Hide the main translation widget */
+#google_translate_element {
+  display: none !important;
+}
+
+/* Hide the top banner frame (Old and New Google Classes) */
+iframe.goog-te-banner-frame {
+  display: none !important;
+}
+.skiptranslate > iframe.goog-te-banner-frame {
+  display: none !important;
+}
+.VIpgJd-ZVi9od-ORHb-OEVmcd, 
+.VIpgJd-ZVi9od-aZ2wEe-wOHMyf {
+  display: none !important;
+}
+
+/* Prevent Google from shifting the body down by 40px */
+body {
+  top: 0px !important;
+  position: static !important;
+}
+
+/* Hide the hover tooltips that show original text */
+.goog-tooltip, 
+.goog-tooltip:hover {
+  display: none !important;
+}
+.goog-text-highlight {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}

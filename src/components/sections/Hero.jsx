@@ -1,6 +1,5 @@
 import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { SplitText, BlurText } from '../ui/Animations'; // 👉 Added BlurText import
 
 export default function Hero() {
   const mouseX = useMotionValue(0);
@@ -28,40 +27,41 @@ export default function Hero() {
         {/* LEFT SIDE: Text Content */}
         <div className="flex flex-col justify-center items-start gap-6 text-left mt-[-5vh] z-20">
           
-          {/* THE ONLY FIX: Changed text-5xl to text-4xl sm:text-5xl to fit mobile screens, and fixed the 4.rem typo */}
-          <div className="text-4xl sm:text-5xl md:text-6xl lg:text-[4rem] font-extrabold text-slate-900 tracking-tight leading-[1.1] flex flex-col items-start">
-            {/* First Line */}
-            <SplitText text="Discover Your True" delay={0.03} />
+          {/* ✅ TRANSLATION SAFE: Rendered as standard continuous text nodes */}
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-[4rem] font-extrabold text-slate-900 tracking-tight leading-[1.1] flex flex-col items-start"
+          >
+            <span className="block">Discover Your True</span>
             
-            {/* Second Line (Gradient) - Fixed to allow individual character animations */}
-            <motion.div 
-              initial="hidden"
-              animate="visible"
-              variants={{ visible: { transition: { delayChildren: 0.4 } } }} 
-              className="mt-2 pb-2"
+            <motion.span 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+              className="block mt-2 pb-2 text-transparent bg-clip-text bg-gradient-to-r from-[#3b82f6] to-[#0ea5e9]"
             >
-              <SplitText 
-                text="Career Trajectory" 
-                delay={0.03} 
-                className="text-transparent bg-clip-text bg-gradient-to-r from-[#3b82f6] to-[#0ea5e9]" 
-              />
-            </motion.div>
-          </div>
+              Career Trajectory
+            </motion.span>
+          </motion.h1>
 
-          {/* 👉 NEW: BlurText animation replaces the old motion.p */}
-          <BlurText 
-            text="Guided AI analysis that takes you from confusion to clarity. Join as a student, mentor, or parent to map out the future."
-            delay={0.9} 
+          {/* ✅ TRANSLATION SAFE: Uses Framer Motion's filter to recreate the BlurText effect without breaking the string */}
+          <motion.p 
+            initial={{ opacity: 0, filter: "blur(12px)", y: 15 }}
+            animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+            transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
             className="text-lg md:text-xl text-slate-800 max-w-lg leading-relaxed font-semibold bg-white/20 backdrop-blur-[2px] p-4 rounded-2xl shadow-sm border border-white/40 block mt-2"
-          />
+          >
+            Guided AI analysis that takes you from confusion to clarity. Join as a student, mentor, or parent to map out the future.
+          </motion.p>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 1.1 }}
+            transition={{ duration: 0.5, delay: 0.7 }}
             className="flex flex-col sm:flex-row gap-4 mt-2"
           >
-            {/* Start button remains, 'See How It Works' is gone! */}
             <Link to="/signin" className="px-8 py-4 bg-[#3b82f6] text-white text-center font-bold rounded-full hover:scale-105 hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-all z-20 w-fit">
               Start Your Journey
             </Link>
