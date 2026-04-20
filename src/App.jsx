@@ -16,7 +16,7 @@ import CareerRecommendations from './pages/CareerRecommendations';
 import Roadmap from './pages/Roadmap';
 import Mentorship from './pages/Mentorship';
 import MentorProfilePublic from './pages/MentorProfilePublic';
-
+import DiscoveryReport from './pages/DiscoveryReport';
 export default function App() {
   return (
     <Router>
@@ -38,6 +38,7 @@ export default function App() {
             <Route path="/profile-creation" element={<ProfileCreation />} />
             <Route path="/personality-test" element={<PersonalityTest />} />
             <Route path="/aptitude-test" element={<AptitudeTest />} />
+            <Route path="/discovery-report" element={<DiscoveryReport />} />
             <Route path="/career-recommendations" element={<CareerRecommendations />} />
             <Route path="/roadmap" element={<Roadmap />} />
 
