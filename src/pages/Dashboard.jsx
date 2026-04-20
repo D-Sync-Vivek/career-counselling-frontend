@@ -693,8 +693,7 @@ export default function Dashboard() {
             <NavItem icon={User} label="My Profile" onClick={() => navigate('/profile-creation')} />
             <NavItem icon={Brain} label="Personality" onClick={handlePersonalityClick} />
             <NavItem icon={Zap} label="Aptitude Test" onClick={handleAptitudeClick} />
-            <NavItem icon={Sparkles} label="Career Matches" onClick={() => navigate('/career-recommendations')} />
-            <NavItem icon={Map} label="My Roadmap" onClick={() => navigate('/roadmap')} />
+<NavItem icon={Sparkles} label="My Discovery Report" onClick={() => navigate('/discovery-report')} />            <NavItem icon={Map} label="My Roadmap" onClick={() => navigate('/roadmap')} />
             <NavItem icon={Video} label="Mentorship" onClick={() => navigate('/mentorship')} />
             <NavItem icon={MessageSquare} label="Messages" onClick={() => setShowDirectChat(true)} />
             <NavItem icon={CalendarClock} label="Sessions" onClick={() => setShowSessionsPanel(true)} />
@@ -854,30 +853,38 @@ export default function Dashboard() {
           </div>
 
           {/* Career Matches Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
-            className={`group rounded-3xl p-8 relative overflow-hidden shadow-sm cursor-pointer ${
-              selectedCareer
-                ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white'
-                : progress.assessmentsDone
-                ? 'bg-gradient-to-br from-amber-500 to-orange-400 text-white'
-                : 'bg-white border border-slate-100 text-slate-900'
-            }`}
-            onClick={() => progress.assessmentsDone && !selectedCareer && navigate('/career-recommendations')}
-          >
-            {progress.assessmentsDone && <ShinyOverlay />}
-            <div className="relative z-10">
-              <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
-                {selectedCareer ? '✅ Career Selected' : '✨ Phase 3'}
-              </span>
-              <h3 className="text-xl font-extrabold mb-2">{selectedCareer ? selectedCareer.title : 'AI Career Matches'}</h3>
-              <p className="text-sm mb-4 opacity-80">{selectedCareer ? 'Your chosen path is active.' : 'Unlock recommendations.'}</p>
-              {!selectedCareer && progress.assessmentsDone && (
-                <button className="px-5 py-3 bg-white text-amber-600 font-extrabold rounded-2xl text-sm">See My Matches</button>
-              )}
-            </div>
-          </motion.div>
+          {/* Career Matches / Discovery Report Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
+          className={`group rounded-3xl p-8 relative overflow-hidden shadow-sm cursor-pointer ${
+            selectedCareer
+              ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white'
+              : progress.assessmentsDone
+              ? 'bg-gradient-to-br from-amber-500 to-orange-400 text-white'
+              : 'bg-white border border-slate-100 text-slate-900'
+          }`}
+          // 👉 CHANGED THE ROUTE HERE
+          onClick={() => progress.assessmentsDone && navigate('/discovery-report')}
+        >
+          {progress.assessmentsDone && <ShinyOverlay />}
+          <div className="relative z-10">
+            <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
+              {selectedCareer ? '✅ Career Selected' : '✨ Phase 3'}
+            </span>
+            <h3 className="text-xl font-extrabold mb-2">
+              {selectedCareer ? selectedCareer.title : 'My Discovery Report'}
+            </h3>
+            <p className="text-sm mb-4 opacity-80">
+              {selectedCareer ? 'Your chosen path is active.' : 'Unlock your 30-page AI career analysis.'}
+            </p>
+            {!selectedCareer && progress.assessmentsDone && (
+              <button className="px-5 py-3 bg-white text-amber-600 font-extrabold rounded-2xl text-sm">
+                View Full Report
+              </button>
+            )}
+          </div>
+        </motion.div>
 
           {/* Roadmap Card */}
           <motion.div
