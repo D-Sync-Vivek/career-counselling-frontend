@@ -72,3 +72,10 @@ export const selectCareerInDB = (careerTitle) => {
 export const getSelectedCareer = () => {
   return apiClient.get("/api/v1/ai/selected-career");
 };
+export const selectCareer = async (careerTitle) => {
+  // 👉 Updated to match your Swagger UI exactly!
+  const response = await apiClient.post('/api/v1/ai/select-career', {
+    career_title: careerTitle
+  });
+  return response;
+};

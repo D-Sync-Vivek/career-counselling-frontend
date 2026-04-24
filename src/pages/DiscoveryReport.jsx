@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Brain, Zap, Target, Heart, Briefcase, 
-  ChevronRight, Loader2, AlertCircle, CheckCircle2,Sparkles
+  ChevronRight, Loader2, AlertCircle, CheckCircle2, Sparkles
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { toast } from 'react-hot-toast'; 
 
 // Utils & API
 import { getUserDisplayName } from '../utils/jwt';
 import { reportApi } from '../services/api/reportApi';
+import { selectCareer } from '../services/api/careerApi';
 
-// The Navigation Tabs (Matches your 5 dimensions + Career Matches)
+// The Navigation Tabs
 const DIMENSIONS = [
   { id: 'personality', label: 'Personality', icon: Brain, color: 'bg-purple-500', hex: '#a855f7' },
   { id: 'aptitude', label: 'Aptitude', icon: Zap, color: 'bg-emerald-500', hex: '#10b981' },
@@ -29,9 +31,9 @@ export default function DiscoveryReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('personality');
+  const [selectingCareer, setSelectingCareer] = useState(null);
 
   useEffect(() => {
-    // Securely fetch the report for the logged-in user
     reportApi.getMyReport()
       .then(data => {
         setReport(data);
@@ -42,6 +44,24 @@ export default function DiscoveryReport() {
         setLoading(false);
       });
   }, []);
+
+  const handleSelectCareer = async (careerName) => {
+    setSelectingCareer(careerName);
+    try {
+      await selectCareer(careerName);
+      toast.success(`🎉 You've locked in ${careerName}!`);
+      
+      // Redirect back to dashboard to start roadmap
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1500);
+
+    } catch (err) {
+      console.error("Failed to select career:", err);
+      toast.error("Failed to save your career choice. Please try again.");
+      setSelectingCareer(null);
+    }
+  };
 
   // ─── LOADING & ERROR STATES ─────────────────────────────────────────────
 
@@ -84,10 +104,9 @@ export default function DiscoveryReport() {
     );
   }
 
-  // ─── DIMENSION RENDERER (Pages 4-26 of SRS) ─────────────────────────────
+  // ─── DIMENSION RENDERER ─────────────────────────────
 
   const renderDimensionContent = (dimensionKey) => {
-    // Handle the slight naming mismatch between DB and UI if necessary
     const data = report.five_dimensions_data[dimensionKey];
     if (!data) return (
       <div className="p-10 text-center text-slate-500 font-bold bg-white rounded-3xl border border-slate-100">
@@ -95,7 +114,6 @@ export default function DiscoveryReport() {
       </div>
     );
 
-    // Format data for Recharts (1-9 scale)
     const chartData = data.traits.map(t => ({
       name: t.name,
       score: t.score
@@ -105,7 +123,6 @@ export default function DiscoveryReport() {
 
     return (
       <div className="space-y-8 pb-12">
-        {/* Header & Horizontal Bar Graph */}
         <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
           <h2 className="text-2xl md:text-3xl font-black text-slate-800 mb-2 capitalize">
             {dimensionKey.replace('_', ' ')} Profile
@@ -132,7 +149,6 @@ export default function DiscoveryReport() {
           </div>
         </div>
 
-        {/* Detailed Trait Cards (Expert Analysis & Dev Plan) */}
         <div className="space-y-6">
           {data.traits.map((trait, idx) => (
             <motion.div 
@@ -140,7 +156,6 @@ export default function DiscoveryReport() {
               key={idx} 
               className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden"
             >
-              {/* Card Header */}
               <div className="bg-slate-50 px-6 md:px-10 py-5 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="text-lg md:text-xl font-black text-slate-800">{trait.name}</h3>
                 <div className="flex items-center gap-3">
@@ -151,7 +166,6 @@ export default function DiscoveryReport() {
                 </div>
               </div>
               
-              {/* Card Body */}
               <div className="p-6 md:p-10 space-y-8">
                 <div>
                   <h4 className="text-[11px] font-black text-blue-500 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -192,10 +206,9 @@ export default function DiscoveryReport() {
     );
   };
 
-  // ─── CAREER MATCHES RENDERER (Pages 27-31 of SRS) ───────────────────────
+  // ─── CAREER MATCHES RENDERER ───────────────────────
 
   const renderCareerMatches = () => {
-    // Check if the AI returned it as an array directly or inside a wrapper
     const matches = Array.isArray(report.career_matches_data) 
       ? report.career_matches_data 
       : report.career_matches_data?.recommended_careers;
@@ -217,9 +230,8 @@ export default function DiscoveryReport() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.1 }}
             key={idx} 
-            className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden"
+            className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden flex flex-col"
           >
-            {/* The 0-100% Match Badge */}
             <div className="absolute top-6 right-6 md:top-10 md:right-10 text-center">
               <div className="w-16 h-16 md:w-20 md:h-20 rounded-full border-4 border-emerald-500 flex items-center justify-center mb-1 shadow-lg shadow-emerald-500/20 bg-white">
                 <span className="text-xl md:text-2xl font-black text-slate-800 notranslate">{career.overall_match_percentage}%</span>
@@ -231,7 +243,6 @@ export default function DiscoveryReport() {
               {career.career_name}
             </h2>
             
-            {/* AI Justification */}
             <div className="mb-10">
               <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-4">Why this fits you perfectly</h4>
               <p className="text-slate-600 leading-relaxed font-medium md:text-lg">
@@ -239,7 +250,6 @@ export default function DiscoveryReport() {
               </p>
             </div>
 
-            {/* Sub-Dimension Scores (Radar/Progress representation) */}
             <div className="bg-slate-50 rounded-[2rem] p-6 md:p-8 border border-slate-100 mb-8">
               <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">5D Alignment Breakdown</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
@@ -260,7 +270,6 @@ export default function DiscoveryReport() {
               </div>
             </div>
 
-            {/* Trending Fields */}
             <div className="flex flex-col md:flex-row md:items-center gap-3">
               <span className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <Target size={14} /> Trending Roles:
@@ -273,6 +282,31 @@ export default function DiscoveryReport() {
                 ))}
               </div>
             </div>
+
+            <div className="mt-10 pt-8 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 className="text-sm font-black text-slate-800">Is this your dream path?</h4>
+                <p className="text-xs text-slate-500 font-medium mt-1">Select this to generate your step-by-step roadmap.</p>
+              </div>
+              <button
+                onClick={() => handleSelectCareer(career.career_name)}
+                disabled={selectingCareer !== null}
+                className={`flex items-center justify-center gap-2 px-8 py-4 font-black rounded-2xl transition-all shadow-lg ${
+                  selectingCareer === career.career_name 
+                    ? 'bg-emerald-600 text-white opacity-100' 
+                    : selectingCareer !== null 
+                      ? 'bg-slate-200 text-slate-400 opacity-50 cursor-not-allowed shadow-none'
+                      : 'bg-emerald-500 hover:bg-emerald-600 hover:-translate-y-1 text-white shadow-emerald-500/30'
+                }`}
+              >
+                {selectingCareer === career.career_name ? (
+                  <><Loader2 size={18} className="animate-spin" /> Saving...</>
+                ) : (
+                  <><CheckCircle2 size={18} /> Lock in this Career</>
+                )}
+              </button>
+            </div>
+
           </motion.div>
         ))}
       </div>
@@ -284,7 +318,6 @@ export default function DiscoveryReport() {
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col lg:flex-row font-sans text-slate-900">
       
-      {/* Sidebar for Desktop */}
       <aside className="w-80 bg-white border-r border-slate-200 fixed h-screen overflow-y-auto hidden lg:flex flex-col z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
         <div className="p-8 border-b border-slate-100">
           <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-blue-600 transition-colors mb-6">
@@ -318,10 +351,8 @@ export default function DiscoveryReport() {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 lg:ml-80 flex flex-col min-h-screen">
         
-        {/* Mobile Header & Horizontal Scroll Tabs */}
         <div className="lg:hidden bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
           <div className="p-5 flex items-center justify-between">
             <button onClick={() => navigate('/dashboard')} className="text-slate-400 hover:text-slate-800">
@@ -330,9 +361,8 @@ export default function DiscoveryReport() {
             <h1 className="text-lg font-black text-slate-800 truncate px-4">
               <span className="notranslate">{userName}'s</span> Report
             </h1>
-            <div className="w-6" /> {/* Spacer for centering */}
+            <div className="w-6" />
           </div>
-          {/* Scrollable Tabs for Mobile */}
           <div className="flex overflow-x-auto hide-scrollbar px-5 pb-4 gap-2">
             {DIMENSIONS.map((dim) => {
               const isActive = activeTab === dim.id;
@@ -351,7 +381,6 @@ export default function DiscoveryReport() {
           </div>
         </div>
 
-        {/* Content Render Area */}
         <div className="p-4 sm:p-6 md:p-10 flex-1">
           <AnimatePresence mode="wait">
             <motion.div

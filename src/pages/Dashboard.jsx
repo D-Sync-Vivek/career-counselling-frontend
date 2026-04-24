@@ -5,7 +5,8 @@ import {
   LayoutDashboard, Map, Video, Settings, LogOut,
   Bell, User, Brain, Zap, Sparkles, ChevronRight, CheckCircle2,
   Lock, ArrowRight, Users, Loader2, TrendingUp,
-  CalendarClock, X, Radio, MessageSquare, PhoneCall, Trash2
+  CalendarClock, X, Radio, MessageSquare, PhoneCall, Trash2,
+  Heart, Target, Briefcase
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -17,12 +18,13 @@ import { mentorshipApi } from '../services/api/mentorshipApi';
 import { chatApi } from '../services/api/chatApi';
 import { apiClient } from '../services/api/apiClient';
 import VideoCallRoom from '../components/VideoCallRoom';
-  import LanguageSelector from '../components/LanguageSelector';
+import LanguageSelector from '../components/LanguageSelector';
 
 import confetti from 'canvas-confetti';
 import { toast } from 'react-hot-toast';
-import { SplitText, ShinyOverlay } from '../components/ui/Animations';
+import { ShinyOverlay } from '../components/ui/Animations';
 import SessionChat from '../components/SessionChat';
+import PsychometricTestModal from './PsychometricTestModal';
 
 // ============================================================================
 // HELPER HOOKS & COMPONENTS
@@ -51,14 +53,23 @@ function useUserProgress() {
     profileDone: userData?.progress?.profile_done ?? false,
     personalityDone: userData?.progress?.personality_done ?? false,
     aptitudeDone: userData?.progress?.aptitude_done ?? false,
-    assessmentsDone:
-      (userData?.progress?.personality_done ?? false) &&
-      (userData?.progress?.aptitude_done ?? false),
+    eqDone: !!userData?.eq_data,
+    orientationDone: !!userData?.orientation_data,
+    interestDone: !!userData?.career_interest_data,
+    
     personalityData: userData?.personality_data ?? null,
     aptiData: userData?.apti_data ?? null,
   };
 
-  return { progress, loading, refetch: fetchUserData };
+  // Phase 3 unlocks only when ALL 5 tests are done
+  progress.assessmentsDone = 
+    progress.personalityDone && 
+    progress.aptitudeDone && 
+    progress.eqDone && 
+    progress.orientationDone && 
+    progress.interestDone;
+
+  return { progress, loading, refetch: fetchUserData, userId: userData?.id };
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
@@ -94,7 +105,6 @@ function PhaseStep({ number, label, status, color }) {
   );
 }
 
-// Score bar for aptitude display
 function ScoreBar({ label, value, max = 100, color = 'bg-blue-500' }) {
   const pct = Math.round((value / max) * 100);
   return (
@@ -119,7 +129,7 @@ function ScoreBar({ label, value, max = 100, color = 'bg-blue-500' }) {
 function PersonalityCompletedCard({ personalityData }) {
   const dominantTraits = personalityData?.dominant_traits ?? [];
   return (
-    <div className="flex-1 bg-white rounded-3xl border border-emerald-200 p-6 shadow-sm">
+    <div className="flex-1 bg-white rounded-3xl border border-emerald-200 p-5 shadow-sm">
       <div className="flex items-center gap-3 mb-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100">
           <Brain size={20} className="text-emerald-600" />
@@ -145,16 +155,13 @@ function PersonalityCompletedCard({ personalityData }) {
 
 // Completed test card for aptitude
 function normalizeAptiData(data) {
-  if (!data) return { q: 0, l: 0, v: 0, max: 5 };
-  // Format A (new): { scores: { quantitative, logical, verbal, max_score } }
+  if (!data) return null;
   if (data.scores) {
     const s = data.scores;
     const max = s.max_score ?? 5;
-    // Old format stored 0-100 percentages; new format stores raw counts <= max
     const norm = (n) => ((n ?? 0) > max ? Math.round(((n ?? 0) / 100) * max) : (n ?? 0));
     return { q: norm(s.quantitative), l: norm(s.logical), v: norm(s.verbal), max };
   }
-  // Format C: { quantitative_aptitude: { score, total }, logical_reasoning, verbal_ability }
   if (data.quantitative_aptitude || data.logical_reasoning || data.verbal_ability) {
     const max = Math.max(
       data.quantitative_aptitude?.total ?? 15,
@@ -168,14 +175,15 @@ function normalizeAptiData(data) {
       max,
     };
   }
-  return { q: 0, l: 0, v: 0, max: 5 };
+  // Fallback for when raw UUIDs are saved without scores yet
+  return null; 
 }
 
 function AptitudeCompletedCard({ aptiData }) {
-  const { q, l, v, max } = normalizeAptiData(aptiData);
+  const scores = normalizeAptiData(aptiData);
   return (
-    <div className="flex-1 bg-white rounded-3xl border border-emerald-200 p-6 shadow-sm">
-      <div className="flex items-center gap-3 mb-3">
+    <div className="flex-1 bg-white rounded-3xl border border-emerald-200 p-5 shadow-sm">
+      <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100">
           <Zap size={20} className="text-emerald-600" />
         </div>
@@ -185,17 +193,37 @@ function AptitudeCompletedCard({ aptiData }) {
         </div>
         <CheckCircle2 size={20} className="text-emerald-500" />
       </div>
-      <div className="mt-1">
-        <ScoreBar label="Quantitative" value={q} max={max} color="bg-blue-400" />
-        <ScoreBar label="Logical" value={l} max={max} color="bg-violet-400" />
-        <ScoreBar label="Verbal" value={v} max={max} color="bg-emerald-400" />
+      {scores && (
+        <div className="mt-4">
+          <ScoreBar label="Quantitative" value={scores.q} max={scores.max} color="bg-blue-400" />
+          <ScoreBar label="Logical" value={scores.l} max={scores.max} color="bg-violet-400" />
+          <ScoreBar label="Verbal" value={scores.v} max={scores.max} color="bg-emerald-400" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Generic Completed Card for EQ, Orientation, and Interest
+function GenericCompletedCard({ title, icon: Icon, bgClass, textClass }) {
+  return (
+    <div className="flex-1 bg-white rounded-3xl border border-emerald-200 p-5 shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${bgClass}`}>
+          <Icon size={20} className={textClass} />
+        </div>
+        <div className="flex-1">
+          <p className="font-extrabold text-sm text-slate-800">{title}</p>
+          <p className="text-xs text-emerald-600 font-bold">✅ Completed</p>
+        </div>
+        <CheckCircle2 size={20} className="text-emerald-500" />
       </div>
     </div>
   );
 }
 
 // ============================================================================
-// SESSIONS PANEL COMPONENTS
+// SESSIONS & CHAT PANELS
 // ============================================================================
 
 function formatCountdown(secs) {
@@ -265,7 +293,6 @@ function SessionBadge({ session, onJoinVideo, joiningVideoId }) {
 
       {/* Action buttons row */}
       <div className="flex gap-2">
-        {/* Join Video Call */}
         <motion.button
           whileTap={{ scale: 0.93 }}
           onClick={() => onJoinVideo(session)}
@@ -309,7 +336,6 @@ function SessionsPanel({ onClose, onJoinVideo, joiningVideoId }) {
         className="absolute right-0 top-0 h-full w-full max-w-sm bg-slate-50 shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="bg-white border-b border-slate-100 px-6 py-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
@@ -326,10 +352,7 @@ function SessionsPanel({ onClose, onJoinVideo, joiningVideoId }) {
           >
             <X size={18} />
           </button>
-                  
         </div>
-
-        {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3">
@@ -352,7 +375,6 @@ function SessionsPanel({ onClose, onJoinVideo, joiningVideoId }) {
             ))
           )}
         </div>
-
         <div className="px-5 py-4 border-t border-slate-100 bg-white shrink-0">
           <p className="text-[10px] text-slate-400 text-center font-medium">
             Video calls open a live Dyte session with your mentor
@@ -363,14 +385,10 @@ function SessionsPanel({ onClose, onJoinVideo, joiningVideoId }) {
   );
 }
 
-// ============================================================================
-// DIRECT CHAT PANEL (24-hour ephemeral, connection-based)
-// ============================================================================
-
 function DirectChatPanel({ onClose, onOpenChat }) {
   const [connections, setConnections]         = useState([]);
   const [loading, setLoading]                 = useState(true);
-  const [confirmDelete, setConfirmDelete]     = useState(null); // contact to delete
+  const [confirmDelete, setConfirmDelete]     = useState(null); 
   const [deleting, setDeleting]               = useState(false);
 
   useEffect(() => {
@@ -411,7 +429,6 @@ function DirectChatPanel({ onClose, onOpenChat }) {
         className="absolute right-0 top-0 h-full w-full max-w-sm bg-slate-50 shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="bg-white border-b border-slate-100 px-6 py-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
@@ -430,7 +447,6 @@ function DirectChatPanel({ onClose, onOpenChat }) {
           </button>
         </div>
 
-        {/* Connection list */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3">
@@ -478,12 +494,6 @@ function DirectChatPanel({ onClose, onOpenChat }) {
             ))
           )}
         </div>
-
-        <div className="px-5 py-4 border-t border-slate-100 bg-white shrink-0">
-          <p className="text-[10px] text-slate-400 text-center font-medium">
-            All messages are ephemeral and vanish after 24 hours
-          </p>
-        </div>
       </motion.div>
 
       {/* Delete confirmation modal */}
@@ -508,7 +518,7 @@ function DirectChatPanel({ onClose, onOpenChat }) {
               </div>
               <h3 className="font-extrabold text-slate-800 text-center text-base mb-1">Remove Connection?</h3>
               <p className="text-xs text-slate-500 text-center mb-5">
-                This will permanently sever your connection with <span className="font-bold text-slate-700">{confirmDelete.full_name}</span> and delete all chat history.
+                This will permanently sever your connection with <span className="font-bold text-slate-700">{confirmDelete.full_name}</span>.
               </p>
               <div className="flex gap-3">
                 <button
@@ -542,7 +552,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const name = getUserDisplayName();
 
-  const { progress, loading } = useUserProgress();
+  const { progress, loading, refetch, userId } = useUserProgress();
 
   const [inviteCode, setInviteCode] = useState(null);
   const [selectedCareer, setSelectedCareer] = useState(null);
@@ -550,11 +560,18 @@ export default function Dashboard() {
   const [loadingMentors, setLoadingMentors] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(false);
   const [showDirectChat, setShowDirectChat] = useState(false);
-  const [activeChat, setActiveChat] = useState(null); // { other_user_id, other_party_name }
-  const [activeVideoCall, setActiveVideoCall] = useState(null); // { token, meeting_id }
+  const [activeChat, setActiveChat] = useState(null); 
+  const [activeRoadmap, setActiveRoadmap] = useState(null);
+  const [activeVideoCall, setActiveVideoCall] = useState(null); 
   const [joiningVideoId, setJoiningVideoId] = useState(null);
   
-  // Fetch Selected Career
+  const [activeTest, setActiveTest] = useState(null); 
+
+  useEffect(() => {
+  roadmapApi.getActiveRoadmap()
+    .then(data => setActiveRoadmap(data))
+    .catch(err => console.log("No active roadmap found yet."));
+}, []);
   useEffect(() => {
     async function fetchSavedCareer() {
       try {
@@ -569,7 +586,6 @@ export default function Dashboard() {
     fetchSavedCareer();
   }, []);
 
-  // Fetch Invite Code — students only (mentors/parents would get 403)
   useEffect(() => {
     const role = localStorage.getItem('role');
     if (role !== 'student') return;
@@ -584,7 +600,6 @@ export default function Dashboard() {
     getInviteCode();
   }, []);
 
-  // Fetch Mentors
   useEffect(() => {
     if (selectedCareer) {
       const fetchMentors = async () => {
@@ -631,32 +646,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleOpenChat = (session) => {
-    setShowSessionsPanel(false);
-    setActiveChat({ other_user_id: session.other_user_id, other_party_name: session.other_party_name });
-  };
-
-  const handlePersonalityClick = () => {
-    if (!progress.profileDone) return;
-    navigate('/personality-test');
-  };
-
-  const handleAptitudeClick = () => {
-    if (!progress.profileDone) return;
-    navigate('/aptitude-test');
-  };
-
   const currentPhase = !progress.profileDone ? 1
     : !progress.assessmentsDone ? 2
     : !selectedCareer ? 3
     : 4;
 
-  const overallPct = [
-    progress.profileDone,
-    progress.personalityDone,
-    progress.aptitudeDone,
-    !!selectedCareer,
-  ].filter(Boolean).length * 25;
+  // 👉 FIXED: Math bug that caused the banner to disappear
+  const isJourneyComplete = progress.profileDone && progress.assessmentsDone && !!selectedCareer;
+  const overallPct = isJourneyComplete ? 100 : [progress.profileDone, progress.assessmentsDone, !!selectedCareer].filter(Boolean).length * 33.33;
 
   const springTransition = { type: 'spring', stiffness: 400, damping: 25 };
 
@@ -691,13 +688,13 @@ export default function Dashboard() {
           <nav className="px-4 space-y-1">
             <NavItem icon={LayoutDashboard} label="Dashboard" active />
             <NavItem icon={User} label="My Profile" onClick={() => navigate('/profile-creation')} />
-            <NavItem icon={Brain} label="Personality" onClick={handlePersonalityClick} />
-            <NavItem icon={Zap} label="Aptitude Test" onClick={handleAptitudeClick} />
-<NavItem icon={Sparkles} label="My Discovery Report" onClick={() => navigate('/discovery-report')} />            <NavItem icon={Map} label="My Roadmap" onClick={() => navigate('/roadmap')} />
+            <NavItem icon={Brain} label="Personality" onClick={() => navigate('/personality-test')} />
+            <NavItem icon={Zap} label="Aptitude Test" onClick={() => navigate('/aptitude-test')} />
+            <NavItem icon={Sparkles} label="My Discovery Report" onClick={() => navigate('/discovery-report')} />
+            <NavItem icon={Map} label="My Roadmap" onClick={() => navigate('/roadmap')} />
             <NavItem icon={Video} label="Mentorship" onClick={() => navigate('/mentorship')} />
             <NavItem icon={MessageSquare} label="Messages" onClick={() => setShowDirectChat(true)} />
             <NavItem icon={CalendarClock} label="Sessions" onClick={() => setShowSessionsPanel(true)} />
-            <NavItem icon={Settings} label="Settings" />
           </nav>
         </div>
         
@@ -707,7 +704,7 @@ export default function Dashboard() {
             <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
               <motion.div animate={{ width: `${overallPct}%` }} className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full" />
             </div>
-            <div className="text-xs font-bold text-slate-500 mt-1"><span className="notranslate">{overallPct}</span>% complete</div>
+            <div className="text-xs font-bold text-slate-500 mt-1"><span className="notranslate">{Math.round(overallPct)}</span>% complete</div>
           </div>
           <button
             onClick={handleLogout}
@@ -722,10 +719,8 @@ export default function Dashboard() {
       <main className="flex-1 md:ml-64 p-6 md:p-8">
 
         {/* Header */}
-        {/* Header */}
         <header className="flex flex-col lg:flex-row lg:items-center justify-between mb-8 gap-4">
           <div>
-            {/* TRANSLATION SAFE: Removed SplitText and added notranslate to the name */}
             <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight flex flex-wrap gap-2">
               Welcome back, <span className="notranslate text-blue-600">{name}</span>!
             </h1>
@@ -737,13 +732,10 @@ export default function Dashboard() {
             </motion.p>
           </div>
 
-          {/* RIGHT SIDE CONTROLS */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* 👉 NEW: Language Selector safely enclosed */}
             <div className="shadow-sm rounded-full bg-white">
               <LanguageSelector />
             </div>
-
             {/* Mobile logout button */}
             <button
               onClick={handleLogout}
@@ -761,10 +753,10 @@ export default function Dashboard() {
         </header>
 
         {/* Journey Progress Timeline */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mb-6">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mb-8">
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-extrabold text-slate-800">Your AI Career Journey</h2>
-            <span className="text-sm font-bold text-blue-600">{overallPct}% complete</span>
+            <span className="text-sm font-bold text-blue-600">{Math.round(overallPct)}% complete</span>
           </div>
           <div className="flex items-center">
             <PhaseStep number="1" label="Build Profile" status={progress.profileDone ? 'done' : currentPhase === 1 ? 'active' : 'locked'} color="bg-gradient-to-r from-blue-500 to-sky-400" />
@@ -777,149 +769,196 @@ export default function Dashboard() {
           </div>
         </motion.div>
         
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* 👉 FIXED LAYOUT: Grid wrapped into two specific columns so they don't stretch each other */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* ─── LEFT COLUMN (Takes up 2/3 width on Desktop) ─── */}
+          <div className="lg:col-span-2 flex flex-col gap-6">
+            
+            {/* Phase 1 Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              whileHover={{ scale: 1.02, y: -4 }} transition={springTransition}
+              className={`group rounded-3xl p-8 relative overflow-hidden ${progress.profileDone ? 'bg-gradient-to-br from-emerald-600 to-teal-500' : 'bg-gradient-to-br from-blue-600 to-sky-400'} text-white shadow-lg`}
+            >
+              <ShinyOverlay />
+              <div className="relative z-10 flex flex-col justify-between">
+                <div>
+                  <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
+                    {progress.profileDone ? '✅ Phase 1 — Complete' : '📋 Phase 1 — Build Your Profile'}
+                  </span>
+                  <h2 className="text-2xl font-extrabold mb-2">{progress.profileDone ? 'Profile Complete' : 'Start by building your profile'}</h2>
+                  <p className="text-white/80 font-medium max-w-md">{progress.profileDone ? 'Your background and interests have been captured.' : 'Answer questions about your background and aspirations. Takes ~5 minutes.'}</p>
+                </div>
+                {!progress.profileDone && (
+                  <button onClick={() => navigate('/profile-creation')} className="mt-6 flex items-center gap-2 px-6 py-3.5 bg-white text-blue-600 font-extrabold rounded-2xl shadow-sm w-fit">
+                    Build My Profile <ArrowRight size={20} />
+                  </button>
+                )}
+              </div>
+            </motion.div>
 
-          {/* Phase 1 Card */}
+            {/* Career Matches / Discovery Report Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              whileHover={{ scale: 1.02, y: -4 }} transition={springTransition}
+              className={`group rounded-3xl p-8 relative overflow-hidden shadow-sm cursor-pointer ${
+                selectedCareer
+                  ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white'
+                  : progress.assessmentsDone
+                  ? 'bg-gradient-to-br from-amber-500 to-orange-400 text-white'
+                  : 'bg-white border border-slate-100 text-slate-900'
+              }`}
+              onClick={() => progress.assessmentsDone && navigate('/discovery-report')}
+            >
+              {progress.assessmentsDone && <ShinyOverlay />}
+              <div className="relative z-10">
+                <span className="px-3 py-1 bg-slate-900/10 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-slate-900/10">
+                  {selectedCareer ? '✅ Career Selected' : '✨ Phase 3'}
+                </span>
+                <h3 className="text-2xl font-extrabold mb-2">
+                  {selectedCareer ? selectedCareer.title : 'My Discovery Report'}
+                </h3>
+                <p className="text-sm mb-6 opacity-80">
+                  {selectedCareer ? 'Your chosen path is active.' : progress.assessmentsDone ? 'Your 30-page AI career analysis is ready.' : 'Complete all 5 assessments to unlock.'}
+                </p>
+                {!selectedCareer && progress.assessmentsDone && (
+                  <button className="px-6 py-3.5 bg-white text-amber-600 font-extrabold rounded-2xl shadow-sm">
+                    View Full Report
+                  </button>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Roadmap Card */}
+            {/* Roadmap Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
-            className={`group md:col-span-2 rounded-3xl p-8 relative overflow-hidden ${progress.profileDone ? 'bg-gradient-to-br from-emerald-600 to-teal-500' : 'bg-gradient-to-br from-blue-600 to-sky-400'} text-white shadow-lg`}
+            whileHover={{ scale: 1.02, y: -4 }} transition={springTransition}
+            className={`group rounded-3xl p-8 relative overflow-hidden ${selectedCareer ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl' : 'bg-white border border-slate-100'}`}
           >
-            <ShinyOverlay />
+            {selectedCareer && <ShinyOverlay />}
             <div className="relative z-10 flex flex-col h-full justify-between">
               <div>
-                <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
-                  {progress.profileDone ? '✅ Phase 1 — Complete' : '📋 Phase 1 — Build Your Profile'}
+                <span className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/10">
+                  {activeRoadmap ? `✅ ACTIVE: PHASE ${activeRoadmap.phase_number}` : '🗺️ MY ROADMAP'}
                 </span>
-                <h2 className="text-2xl font-extrabold mb-2">{progress.profileDone ? 'Profile Complete' : 'Start by building your profile'}</h2>
-                <p className="text-white/80 font-medium max-w-md">{progress.profileDone ? 'Your background and interests have been captured.' : 'Answer questions about your background and aspirations. Takes ~5 minutes.'}</p>
+                <h3 className="text-2xl font-extrabold mb-2">Your Career Roadmap</h3>
+                
+                {activeRoadmap ? (
+                   <p className="text-slate-400 mb-6 font-medium">
+                     You are currently executing Phase {activeRoadmap.phase_number} of your journey. Keep up the momentum!
+                   </p>
+                ) : selectedCareer ? (
+                  <p className="text-slate-400 mb-6">Your 6-month phase roadmap is ready. Start your journey today!</p>
+                ) : (
+                  <p className="text-slate-500">Select a career to generate your first 6-month roadmap.</p>
+                )}
               </div>
-              {!progress.profileDone && (
-                <button onClick={() => navigate('/profile-creation')} className="mt-6 flex items-center gap-2 px-6 py-3.5 bg-white text-blue-600 font-extrabold rounded-2xl shadow-sm w-fit">
-                  Build My Profile <ArrowRight size={20} />
+
+              {selectedCareer && (
+                <button 
+                  onClick={() => activeRoadmap ? navigate('/roadmap') : startJourney()} 
+                  className="flex items-center gap-2 px-6 py-3.5 bg-white text-slate-900 font-extrabold rounded-2xl w-fit hover:scale-105 transition-transform"
+                >
+                  {activeRoadmap ? "Continue My Journey" : "Start Phase 1"} <ArrowRight size={20} />
                 </button>
               )}
             </div>
           </motion.div>
 
-          {/* Assessment Cards */}
-          <div className="space-y-4 flex flex-col h-full">
-            {/* Personality Card */}
-            {progress.personalityDone ? (
-              <PersonalityCompletedCard personalityData={progress.personalityData} />
-            ) : (
-              <div
-                onClick={handlePersonalityClick}
-                className={`flex-1 bg-white rounded-3xl border p-6 shadow-sm transition-all group ${
-                  progress.profileDone ? 'hover:border-violet-300 cursor-pointer' : 'opacity-60 cursor-not-allowed'
-                } border-slate-100`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-violet-100">
-                    <Brain size={20} className="text-violet-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-extrabold text-sm text-slate-800">Personality Test</p>
-                    <p className="text-xs text-slate-400">35 questions · ~10 min</p>
-                  </div>
-                  <ChevronRight size={18} className="text-slate-400" />
-                </div>
-              </div>
-            )}
-
-            {/* Aptitude Card */}
-            {progress.aptitudeDone ? (
-              <AptitudeCompletedCard aptiData={progress.aptiData} />
-            ) : (
-              <div
-                onClick={handleAptitudeClick}
-                className={`flex-1 bg-white rounded-3xl border p-6 shadow-sm transition-all group ${
-                  progress.profileDone ? 'hover:border-blue-300 cursor-pointer' : 'opacity-60 cursor-not-allowed'
-                } border-slate-100`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-100">
-                    <Zap size={20} className="text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-extrabold text-sm text-slate-800">Aptitude Test</p>
-                    <p className="text-xs text-slate-400">15 questions · ~8 min</p>
-                  </div>
-                  <ChevronRight size={18} className="text-slate-400" />
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Career Matches Card */}
-          {/* Career Matches / Discovery Report Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
-          className={`group rounded-3xl p-8 relative overflow-hidden shadow-sm cursor-pointer ${
-            selectedCareer
-              ? 'bg-gradient-to-br from-emerald-600 to-teal-500 text-white'
-              : progress.assessmentsDone
-              ? 'bg-gradient-to-br from-amber-500 to-orange-400 text-white'
-              : 'bg-white border border-slate-100 text-slate-900'
-          }`}
-          // 👉 CHANGED THE ROUTE HERE
-          onClick={() => progress.assessmentsDone && navigate('/discovery-report')}
-        >
-          {progress.assessmentsDone && <ShinyOverlay />}
-          <div className="relative z-10">
-            <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-bold uppercase tracking-wider mb-4 inline-block border border-white/30">
-              {selectedCareer ? '✅ Career Selected' : '✨ Phase 3'}
-            </span>
-            <h3 className="text-xl font-extrabold mb-2">
-              {selectedCareer ? selectedCareer.title : 'My Discovery Report'}
-            </h3>
-            <p className="text-sm mb-4 opacity-80">
-              {selectedCareer ? 'Your chosen path is active.' : 'Unlock your 30-page AI career analysis.'}
-            </p>
-            {!selectedCareer && progress.assessmentsDone && (
-              <button className="px-5 py-3 bg-white text-amber-600 font-extrabold rounded-2xl text-sm">
-                View Full Report
-              </button>
-            )}
-          </div>
-        </motion.div>
+          {/* ─── RIGHT COLUMN (Takes up 1/3 width on Desktop) ─── */}
+          <div className="lg:col-span-1 flex flex-col gap-6">
+            
+            {/* 5D Assessment Cards Stack */}
+            <div className="space-y-4 flex flex-col bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+              <div className="mb-2">
+                <h3 className="font-extrabold text-slate-800 text-lg mb-1">5D Psychometric Tests</h3>
+                <p className="text-xs text-slate-500 mb-2">Complete all 5 to unlock your report.</p>
+              </div>
 
-          {/* Roadmap Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            whileHover={{ scale: 1.02, y: -8 }} transition={springTransition}
-            className={`group md:col-span-2 rounded-3xl p-8 relative overflow-hidden ${selectedCareer ? 'bg-gradient-to-br from-slate-900 to-slate-800 text-white' : 'bg-white border border-slate-100'}`}
-          >
-            {selectedCareer && <ShinyOverlay />}
-            <div className="relative z-10">
-              <h3 className="text-2xl font-extrabold mb-2">Your Career Roadmap</h3>
-              {selectedCareer ? (
-                <>
-                  <p className="text-slate-400 mb-6">Your step-by-step roadmap is ready. Start your journey today!</p>
-                  <button onClick={startJourney} className="flex items-center gap-2 px-6 py-3.5 bg-white text-slate-900 font-extrabold rounded-2xl">
-                    Start My Journey <ArrowRight size={20} />
-                  </button>
-                </>
-              ) : (
-                <p className="text-slate-500">Select a career to generate your roadmap.</p>
-              )}
-            </div>
-          </motion.div>
+              {/* 1. Personality */}
+              {progress.personalityDone ? <PersonalityCompletedCard personalityData={progress.personalityData} /> : 
+                <div onClick={() => progress.profileDone && navigate('/personality-test')} className={`flex-1 bg-slate-50 rounded-[1.5rem] border p-4 transition-all group ${progress.profileDone ? 'hover:border-violet-300 hover:bg-white cursor-pointer' : 'opacity-60 cursor-not-allowed'} border-slate-100`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-violet-100"><Brain size={18} className="text-violet-600" /></div>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-sm text-slate-800">Personality Test</p>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-400" />
+                  </div>
+                </div>
+              }
 
-          {/* Parent Invite */}
-          <div className="rounded-3xl p-8 bg-white border border-slate-100 shadow-sm">
-            <h3 className="font-extrabold text-slate-800 mb-4">Share with Parents</h3>
-            <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
-             <p className="font-bold text-slate-800 tracking-widest notranslate">{inviteCode || 'Loading...'}</p>
-              <button
-                onClick={() => { navigator.clipboard.writeText(inviteCode); toast.success('Copied!'); }}
-                className="text-blue-500 font-bold"
-              >
-                Copy
-              </button>
+              {/* 2. Aptitude */}
+              {progress.aptitudeDone ? <AptitudeCompletedCard aptiData={progress.aptiData} /> : 
+                <div onClick={() => progress.profileDone && navigate('/aptitude-test')} className={`flex-1 bg-slate-50 rounded-[1.5rem] border p-4 transition-all group ${progress.profileDone ? 'hover:border-blue-300 hover:bg-white cursor-pointer' : 'opacity-60 cursor-not-allowed'} border-slate-100`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-100"><Zap size={18} className="text-blue-600" /></div>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-sm text-slate-800">Aptitude Test</p>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-400" />
+                  </div>
+                </div>
+              }
+
+              {/* 3. Emotional Quotient */}
+              {progress.eqDone ? <GenericCompletedCard title="Emotional Quotient" icon={Heart} bgClass="bg-rose-100" textClass="text-rose-600" /> : 
+                <div onClick={() => progress.profileDone && setActiveTest('eq')} className={`flex-1 bg-slate-50 rounded-[1.5rem] border p-4 transition-all group ${progress.profileDone ? 'hover:border-rose-300 hover:bg-white cursor-pointer' : 'opacity-60 cursor-not-allowed'} border-slate-100`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-100"><Heart size={18} className="text-rose-600" /></div>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-sm text-slate-800">Emotional Quotient</p>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-400" />
+                  </div>
+                </div>
+              }
+
+              {/* 4. Orientation Style */}
+              {progress.orientationDone ? <GenericCompletedCard title="Orientation Style" icon={Target} bgClass="bg-indigo-100" textClass="text-indigo-600" /> : 
+                <div onClick={() => progress.profileDone && setActiveTest('orientation')} className={`flex-1 bg-slate-50 rounded-[1.5rem] border p-4 transition-all group ${progress.profileDone ? 'hover:border-indigo-300 hover:bg-white cursor-pointer' : 'opacity-60 cursor-not-allowed'} border-slate-100`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-100"><Target size={18} className="text-indigo-600" /></div>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-sm text-slate-800">Orientation Style</p>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-400" />
+                  </div>
+                </div>
+              }
+
+              {/* 5. Career Interests */}
+              {progress.interestDone ? <GenericCompletedCard title="Career Interests" icon={Briefcase} bgClass="bg-amber-100" textClass="text-amber-600" /> : 
+                <div onClick={() => progress.profileDone && setActiveTest('interest')} className={`flex-1 bg-slate-50 rounded-[1.5rem] border p-4 transition-all group ${progress.profileDone ? 'hover:border-amber-300 hover:bg-white cursor-pointer' : 'opacity-60 cursor-not-allowed'} border-slate-100`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-100"><Briefcase size={18} className="text-amber-600" /></div>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-sm text-slate-800">Career Interests</p>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-400" />
+                  </div>
+                </div>
+              }
             </div>
+
+            {/* Parent Invite */}
+            <div className="rounded-3xl p-6 bg-white border border-slate-100 shadow-sm">
+              <h3 className="font-extrabold text-slate-800 mb-4">Share with Parents</h3>
+              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border">
+               <p className="font-bold text-slate-800 tracking-widest notranslate">{inviteCode || 'Loading...'}</p>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(inviteCode); toast.success('Copied!'); }}
+                  className="text-blue-500 font-bold text-sm"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -939,7 +978,7 @@ export default function Dashboard() {
                     <p className="text-xs text-blue-500 font-bold">{mentor.expertise}</p>
                     <button
                       onClick={() => navigate(`/mentorship/${mentor.id}`)}
-                      className="mt-4 w-full py-2 bg-white rounded-xl text-sm font-bold border"
+                      className="mt-4 w-full py-2 bg-white rounded-xl text-sm font-bold border hover:bg-blue-50"
                     >
                       View Profile
                     </button>
@@ -950,15 +989,15 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Global Journey Completion */}
-        {overallPct === 100 && (
+        {/* 👉 FIXED: Global Journey Completion Banner */}
+        {isJourneyComplete && (
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             onMouseEnter={fireConfetti}
-            className="mt-6 bg-gradient-to-r from-blue-600 to-sky-400 rounded-3xl p-8 text-white text-center shadow-lg cursor-pointer"
+            className="mt-8 bg-gradient-to-r from-blue-600 to-sky-400 rounded-3xl p-8 text-white text-center shadow-lg cursor-pointer"
           >
             <h2 className="text-2xl font-extrabold mb-2">You've completed the full journey!</h2>
-            <p className="text-blue-100">Your roadmap is live. Make your dream a reality.</p>
+            <p className="text-blue-100 font-medium">Your roadmap is live. Make your dream a reality.</p>
           </motion.div>
         )}
       </main>
@@ -1025,6 +1064,30 @@ export default function Dashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Psychometric Test Modal Renderer */}
+      <AnimatePresence>
+        {activeTest && (
+          <PsychometricTestModal
+            moduleName={activeTest}
+            moduleTitle={
+              activeTest === 'eq' ? 'Emotional Quotient' : 
+              activeTest === 'orientation' ? 'Orientation Style' : 'Career Interests'
+            }
+            isAlreadyCompleted={
+              activeTest === 'eq' ? progress.eqDone :
+              activeTest === 'orientation' ? progress.orientationDone : progress.interestDone
+            }
+            userId={userId}
+            onClose={() => setActiveTest(null)}
+            onComplete={() => {
+              setActiveTest(null);
+              refetch(); // Automatically refreshes the dashboard to show the completed checkmark!
+            }}
+          />
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

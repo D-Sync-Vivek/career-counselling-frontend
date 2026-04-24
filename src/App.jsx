@@ -17,6 +17,7 @@ import Roadmap from './pages/Roadmap';
 import Mentorship from './pages/Mentorship';
 import MentorProfilePublic from './pages/MentorProfilePublic';
 import DiscoveryReport from './pages/DiscoveryReport';
+import CycleReview from './pages/CycleReview';
 export default function App() {
   return (
     <Router>
@@ -41,7 +42,7 @@ export default function App() {
             <Route path="/discovery-report" element={<DiscoveryReport />} />
             <Route path="/career-recommendations" element={<CareerRecommendations />} />
             <Route path="/roadmap" element={<Roadmap />} />
-
+            <Route path="/cycle-review" element={<CycleReview />} />
             {/* Mentorship */}
             <Route path="/mentorship" element={<Mentorship />} />
             <Route path="/mentorship/:mentorId" element={<MentorProfilePublic />} />
