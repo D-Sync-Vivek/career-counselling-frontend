@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, Loader2, ChevronDown, ChevronUp, CheckCircle2, Zap,
-  Target, BookOpen, Flag, AlertCircle, Clock, BarChart2, Brain,
-  ExternalLink, RefreshCw, Layers, Users, UserCheck,
-  Wand2, MessageSquare, Sparkles, Circle, CheckCircle, Map
+  ArrowLeft, ArrowRight, Loader2, ChevronDown, ChevronUp, CheckCircle2, Zap,
+  Target, Flag, AlertCircle, Layers, Circle, CheckCircle, Sparkles
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import confetti from 'canvas-confetti';
 
 // API Service Imports
 import { roadmapApi } from '../services/api/roadmapApi';
@@ -30,17 +29,11 @@ const PHASE_GRADIENTS = [
   'from-rose-600 to-pink-400',
 ];
 
-const LEVEL_META = {
-  BEGINNER:     { label: 'Beginner',     bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  INTERMEDIATE: { label: 'Intermediate', bg: 'bg-amber-100',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
-  ADVANCED:     { label: 'Advanced',     bg: 'bg-rose-100',    text: 'text-rose-700',    dot: 'bg-rose-500'    },
-};
-
 // ============================================================================
 // SUB-COMPONENTS
 // ============================================================================
 
-function PhaseCard({ phase, index, totalPhases, onToggleTask }) {
+function PhaseCard({ phase, index, totalPhases, onToggleTask, isCycleComplete }) {
   const [expanded, setExpanded] = useState(index === 0);
   const meta = IMPORTANCE_META[phase.importance] || IMPORTANCE_META.STRATEGIC;
   const gradient = PHASE_GRADIENTS[index % PHASE_GRADIENTS.length];
@@ -124,11 +117,15 @@ function PhaseCard({ phase, index, totalPhases, onToggleTask }) {
                     {phase.tasks?.map((task) => (
                       <button
                         key={task.id}
-                        onClick={() => onToggleTask(task.id, phase.id)}
+                        // 👉 NEW: Disable clicking if the 6-month cycle is 100% complete
+                        onClick={() => !isCycleComplete && onToggleTask(task.id, phase.id)}
+                        disabled={isCycleComplete}
                         className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${
                           task.status === 'Completed' 
                           ? 'bg-emerald-50/50 border-emerald-100 text-slate-700' 
-                          : 'bg-slate-50 border-slate-100 hover:border-blue-200 text-slate-600'
+                          : isCycleComplete
+                            ? 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed'
+                            : 'bg-slate-50 border-slate-100 hover:border-blue-200 text-slate-600'
                         }`}
                       >
                         <div className="shrink-0">
@@ -176,7 +173,6 @@ export default function Roadmap() {
   const [roadmap, setRoadmap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [career, setCareer] = useState('');
 
   const fetchRoadmapData = useCallback(async () => {
     setLoading(true);
@@ -191,7 +187,6 @@ export default function Roadmap() {
         const selection = await getSelectedCareer();
         
         if (selection && selection.career_title) {
-          setCareer(selection.career_title);
           // 3. Generate using the title from DB
           const generated = await roadmapApi.generateRoadmap(selection.career_title);
           await roadmapApi.saveRoadmap(generated);
@@ -206,7 +201,7 @@ export default function Roadmap() {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, []);
 
   useEffect(() => {
     fetchRoadmapData();
@@ -234,6 +229,12 @@ export default function Roadmap() {
 
     try {
       const result = await roadmapApi.toggleTaskComplete(taskId);
+      
+      // 👉 NEW: If they hit 100%, fire confetti!
+      if (result.total_progress === 100) {
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+      }
+
       // Sync with server result for accuracy
       setRoadmap(prev => {
         if (!prev) return prev;
@@ -249,6 +250,9 @@ export default function Roadmap() {
   };
 
   const globalProgress = roadmap?.progress_percentage || 0;
+  
+  // 👉 NEW: Determine if the 6-month cycle is completely finished
+  const isCycleComplete = Math.round(globalProgress) === 100 || roadmap?.status === "Completed";
 
   if (loading) {
     return (
@@ -274,8 +278,8 @@ export default function Roadmap() {
           <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
           <h2 className="text-2xl font-extrabold text-slate-900 mb-3">No active roadmap</h2>
           <p className="text-slate-500 font-medium mb-6">{error || 'Generate a roadmap to start tracking your journey.'}</p>
-          <button onClick={() => navigate('/career-recommendations')} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all">
-            Find Career Matches
+          <button onClick={() => navigate('/dashboard')} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all">
+            Return to Dashboard
           </button>
         </div>
       </div>
@@ -305,6 +309,34 @@ export default function Roadmap() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-10">
+        
+        {/* 👉 NEW: 🚀 CYCLE COMPLETE BANNER (Appears exactly when hitting 100%) */}
+        {isCycleComplete && (
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0, y: -20 }} 
+            animate={{ scale: 1, opacity: 1, y: 0 }} 
+            className="bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl p-10 text-center text-white shadow-xl mb-8 relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4 pointer-events-none" />
+            
+            <div className="relative z-10">
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-6 backdrop-blur-sm border border-white/30">
+                <Zap size={40} className="text-white" />
+              </div>
+              <h2 className="text-3xl font-black mb-3">6-Month Phase Complete!</h2>
+              <p className="text-blue-100 font-medium mb-8 max-w-lg mx-auto leading-relaxed">
+                Incredible work! You've finished Phase {roadmap.phase_number} of your journey. It's time to reflect on your progress, update your assessments, and let the AI generate Phase {roadmap.phase_number + 1}.
+              </p>
+              <button 
+                onClick={() => navigate('/cycle-review')} 
+                className="px-8 py-4 bg-white text-blue-600 hover:bg-blue-50 hover:scale-105 transition-all font-black rounded-2xl shadow-lg flex items-center justify-center gap-2 mx-auto"
+              >
+                Reflect & Unlock Next Phase <ArrowRight size={20} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {/* Hero Section with Progress */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -317,10 +349,11 @@ export default function Roadmap() {
             <div className="flex justify-between items-start mb-6">
               <div>
                 <span className="px-3 py-1 bg-blue-500/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-[0.2em] mb-4 inline-block border border-blue-500/30 text-blue-300">
-                  Active Mission
+                  {/* 👉 UPDATED: Dynamically uses the DB Phase Number */}
+                  Active Mission: Phase {roadmap.phase_number}
                 </span>
                 <h1 className="text-4xl font-extrabold mb-2 tracking-tight">{roadmap.title}</h1>
-                <p className="text-slate-400 font-medium">Level: {roadmap.student_level} | Status: {roadmap.status}</p>
+                <p className="text-slate-400 font-medium">Status: {isCycleComplete ? "Completed" : roadmap.status}</p>
               </div>
               <div className="text-right">
                 <div className="text-4xl font-black text-blue-400">{Math.round(globalProgress)}%</div>
@@ -374,12 +407,13 @@ export default function Roadmap() {
               index={i}
               totalPhases={roadmap.phases.length}
               onToggleTask={handleToggleTask}
+              isCycleComplete={isCycleComplete} // 👉 NEW: Passes the lock state to the cards
             />
           ))}
         </div>
 
         {/* Floating Start CTA if overview */}
-        {roadmap.status === 'Overview' && (
+        {roadmap.status === 'Overview' && !isCycleComplete && (
           <motion.div 
             initial={{ y: 100 }}
             animate={{ y: 0 }}

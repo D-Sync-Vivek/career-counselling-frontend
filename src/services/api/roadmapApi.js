@@ -1,9 +1,10 @@
 import { apiClient } from './apiClient';
 
 export const roadmapApi = {
-  // 1. Generate the roadmap
+  // 👉 FIXED: Only append the query string if a careerTitle is actually provided!
   generateRoadmap: async (careerTitle) => {
-    return apiClient.get(`/api/v1/roadmaps/generate?career=${encodeURIComponent(careerTitle)}`);
+    const params = careerTitle ? `?career=${encodeURIComponent(careerTitle)}` : '';
+    return apiClient.get(`/api/v1/roadmaps/generate${params}`);
   },
 
   // 2. Save the generated roadmap to the database
