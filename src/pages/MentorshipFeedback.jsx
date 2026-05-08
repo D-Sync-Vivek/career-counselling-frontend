@@ -30,7 +30,6 @@ export default function FeedbackTab({ toast }) {
     mentorshipApi
       .getCompletedSessions()
       .then((data) => {
-        console.log(data);
         setSessions(data || [])
       })
       .catch((err) => {
@@ -51,7 +50,6 @@ export default function FeedbackTab({ toast }) {
     mentorshipApi
       .getSessionStudents(selectedSession.session_id)
       .then((data) => {
-        console.log("Data from api", data);
         setStudents(data || []);
       })
       .catch((err) => {
