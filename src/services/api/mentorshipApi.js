@@ -49,7 +49,7 @@ export const mentorshipApi = {
   getSessionStudents: (sessionId) => 
     apiClient.get(`/api/v1/sessions/${sessionId}/students`),
   submitFeedback: (sessionId, studentId, {rating, feedback}) =>
-    apiClient.post(`api/v1/sessions/${sessionId}/students/${studentId}/feedback`, {
+    apiClient.post(`/api/v1/sessions/${sessionId}/students/${studentId}/feedback`, {
       rating,
       feedback
     })
