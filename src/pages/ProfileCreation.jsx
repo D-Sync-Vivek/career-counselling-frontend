@@ -12,7 +12,7 @@ const MODULES = [
   { key: 'profile',   label: 'Basic Profile',      icon: User,       desc: 'Let’s start with the basics to establish your identity.' },
   { key: 'academic',  label: 'Academic Profile',   icon: BookOpen,   desc: 'Share your academic background and learning style.' },
   { key: 'lifestyle', label: 'Lifestyle & Habits', icon: Heart,      desc: 'Help us understand your daily routine and focus habits.' },
-  { key: 'interests', label: 'Interests & Skills', icon: Compass,    desc: 'What drives you, excites you, and where your strengths lie.' },
+  { key: 'interest', fetchKey: 'interests', label: 'Interests & Skills', icon: Compass,    desc: 'What drives you, excites you, and where your strengths lie.' },
   { key: 'aspiration',label: 'Aspirations',        icon: Star,       desc: 'Your vision for the future and ultimate career goals.' },
   { key: 'financial', label: 'Financial Context',  icon: DollarSign, desc: 'Context to help us recommend practical, tailored paths.' },
 ];
@@ -295,13 +295,13 @@ export default function ProfileCreation() {
   async function loadQuestions(stepIndex) {
     const mod = MODULES[stepIndex];
     
-    // Don't refetch if we already have the questions for this module
+    const targetKey = mod.fetchKey || mod.key;
+    
     if (allQuestions[mod.key]) return;
 
     setLoadingStep(true);
     try {
-      // Fetching directly from database template row
-      const response = await getModuleQuestions(mod.key);
+      const response = await getModuleQuestions(targetKey);
       
       const questionsObj = response?.data?.questions || response?.questions || {};
 
@@ -327,14 +327,6 @@ export default function ProfileCreation() {
 
   function handleAnswer(key, val) {
     setAnswers(prev => ({ ...prev, [key]: val }));
-    
-    if (key === 'full_name' && val) {
-      localStorage.setItem('harmony_profile_name', val.split(' ')[0]);
-      if (user?.userId) localStorage.setItem('harmony_profile_owner', user.userId);
-    }
-    if (key === 'current_class' && val) {
-      localStorage.setItem('harmony_student_grade', val);
-    }
   }
 
   const TEXT_FIELD_KEYS = new Set([
@@ -387,12 +379,22 @@ export default function ProfileCreation() {
     try {
       if (user?.userId) {
         await submitAssessment({ userId: user.userId, moduleKey: mod.key, payload });
+        if(mod.key === 'profile'){
+          if(answers.full_name) localStorage.setItem('harmony_profile_name', answers.full_name.split(' ')[0]);
+          if(answers.current_class) localStorage.setItem('harmony_student_grade', answers.current_class);
+          localStorage.setItem('harmony_profile_owner', user.userId);
+        }
       }
     } catch (e) {
-      toast.error('Failed to save data. Continuing anyway.');
-    } finally {
+      console.error("API Error details:", e.data);
+      toast.error(e.data?.detail || 'Failed to save data. Please check your inputs and try again.');
+      
       setSubmitting(false);
-    }
+      return; // CRITICAL: This halts the function. The user stays on the current step.
+    } 
+
+    setSubmitting(false);
+    
 
     // 4. Handle navigation
     if (step < MODULES.length - 1) {
