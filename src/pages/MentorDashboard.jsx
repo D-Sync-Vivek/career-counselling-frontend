@@ -1199,9 +1199,9 @@ function ProfileTab({ profileData, onProfileCreated, toast }) {
 
 // ── FEEDBACK TAB ──────────────────────────────────────────────────────────────
 
-function FeedbackTab() {
+function FeedbackTab({toast}) {
   return (
-    <MentorshipFeedback toast={Toast}/>
+    <MentorshipFeedback toast={toast}/>
   );
 }
 
@@ -1352,7 +1352,7 @@ export default function MentorDashboard() {
             {activeTab === 'messages'    && <DirectMessagesTab toast={showToast} />}
             {activeTab === 'connections' && <ConnectionsTab toast={showToast} onCountChange={setConnectionCount} />}
             {activeTab === 'profile'     && <ProfileTab profileData={profileData} onProfileCreated={handleProfileSaved} toast={showToast} />}
-            {activeTab === 'feedback'    && <FeedbackTab />}
+            {activeTab === 'feedback'    && <FeedbackTab toast={showToast} />}
           </motion.div>
         </AnimatePresence>
       </main>
