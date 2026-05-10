@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, Loader2, ChevronDown, ChevronUp, CheckCircle2, Zap,
-  Target, Flag, AlertCircle, Layers, Circle, CheckCircle, Sparkles
+  Target, Flag, AlertCircle, Layers, Circle, CheckCircle, Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
@@ -173,6 +174,29 @@ export default function Roadmap() {
   const [roadmap, setRoadmap] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [adjusting, setAdjusting] = useState(false);
+
+  const handleAdjustPath = async () => {
+    setAdjusting(true);
+    setError('');
+    try {
+      const adjustedData = await roadmapApi.adjustRoadmap();
+      console.log('Adjusted Data:', adjustedData);
+
+      // Keep frontend state shape consistent with getActiveRoadmap response.
+      if (!adjustedData || !Array.isArray(adjustedData.phases)) {
+        const freshRoadmap = await roadmapApi.getActiveRoadmap();
+        setRoadmap(freshRoadmap);
+      } else {
+        setRoadmap(adjustedData);
+      }
+    } catch (err) {
+      console.error("Adjustment Failed", err);
+      setError(err.message || "Failed to adjust roadmap");
+    } finally {
+      setAdjusting(false);
+    }
+  };
 
   const fetchRoadmapData = useCallback(async () => {
     setLoading(true);
@@ -381,9 +405,31 @@ export default function Roadmap() {
                   <CheckCircle2 size={12} /> Tasks
                 </div>
                 <div className="text-lg font-bold">
-                  {roadmap.phases?.reduce((acc, p) => acc + p.tasks.filter(t => t.status === 'Completed').length, 0)} Done
+                  {roadmap.phases?.reduce((acc, p) => acc + (p.tasks?.filter(t => t.status === 'Completed').length || 0), 0) || 0} Done
                 </div>
               </div>
+              <button 
+                onClick={handleAdjustPath}
+                disabled={adjusting || !roadmap}
+                className={`bg-white/5 backdrop-blur-sm rounded-2xl p-4 border border-white/10 transition-all flex items-center gap-3 ${adjusting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
+              >
+                {adjusting ? (
+                  <>
+                    <Loader2 size={18} className='animate-spin text-emerald-400' />
+                    <span className='font-bold text-sm'>Analyzing Feedback...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                      <RefreshCw size={16} className="text-emerald-400" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-sm text-white">Adjust My Path</p>
+                      <p className="text-[10px] text-white/50">Pivot based on Mentor & Parent notes</p>
+                    </div>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </motion.div>
@@ -400,7 +446,7 @@ export default function Roadmap() {
             </div>
           </div>
 
-          {roadmap.phases?.map((phase, i) => (
+          {Array.isArray(roadmap.phases) && roadmap.phases.length > 0 ? roadmap.phases.map((phase, i) => (
             <PhaseCard
               key={phase.id}
               phase={phase}
@@ -409,7 +455,11 @@ export default function Roadmap() {
               onToggleTask={handleToggleTask}
               isCycleComplete={isCycleComplete} // 👉 NEW: Passes the lock state to the cards
             />
-          ))}
+          )) : (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center text-slate-500">
+              {adjusting ? 'Generating your adjusted phases...' : 'No phases available yet. Try adjusting again in a few seconds.'}
+            </div>
+          )}
         </div>
 
         {/* Floating Start CTA if overview */}

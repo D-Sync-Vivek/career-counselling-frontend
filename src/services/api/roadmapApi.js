@@ -31,4 +31,10 @@ export const roadmapApi = {
   getStudentRoadmap: async (studentId) => {
     return apiClient.get(`/api/v1/roadmaps/student/${studentId}`);
   },
+
+  // 7. Adjust the current roadmap.
+  adjustRoadmap: async () => {
+    const response = await apiClient.post("/api/v1/roadmaps/adjust", {});
+    return response?.roadmap || response?.data || response;
+  }
 };
