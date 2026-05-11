@@ -708,7 +708,7 @@ export default function Dashboard() {
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center w-full px-4 py-3 text-slate-500 hover:text-red-500 hover:bg-red-50 hover:translate-x-1 rounded-xl transition-all duration-300 font-semibold group"
+            className="flex items-center w-full px-4 py-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-black text-xs tracking-widest uppercase"
           >
             <LogOut size={20} className="mr-3 group-hover:scale-110 transition-transform" /> Sign Out
           </button>

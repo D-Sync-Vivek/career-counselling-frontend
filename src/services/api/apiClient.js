@@ -1,7 +1,17 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+// Custom error class
+export class ApiError extends Error {
+  constructor(message, status, data) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 async function request(path, options = {}) {
-  const token = localStorage.getItem("token");
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   const headers = {
     ...options.headers,
@@ -30,7 +40,7 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.detail || `Request failed: ${response.status}`);
+    throw new ApiError(errorData?.detail || "API Error", response.status, errorData);
   }
 
   return response.json();
