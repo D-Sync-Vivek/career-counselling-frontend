@@ -14,7 +14,8 @@ import { mentorshipApi } from '../services/api/mentorshipApi';
 import { chatApi } from '../services/api/chatApi';
 import { roadmapApi } from '../services/api/roadmapApi';
 import LanguageSelector from '../components/LanguageSelector';
-import MentorshipFeedback from './MentorshipFeedback'
+import MentorshipFeedback from './MentorshipFeedback';
+import StudentCard from './StudentCard';
 // ── SHARED UI ─────────────────────────────────────────────────────────────────
 
 function NavItem({ icon: Icon, label, active, onClick, badge }) {
@@ -911,6 +912,20 @@ function ConnectionsTab({ toast, onCountChange }) {
   const [actionId,    setActionId]   = useState(null);
   const [viewProfile, setViewProfile] = useState(null); // { studentId, data }
   const [profileLoading, setProfileLoading] = useState(false);
+  const [students, setStudents] = useState([])
+
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try{
+        const data = await mentorshipApi.getConnectedStudents();
+        setStudents(data);
+      } catch(err){
+        console.error("Failed to load students", err);
+      }
+    };
+    fetchStudents();
+    console.log("student, ", students)
+  }, [students.length])
 
   const fetchRequests = useCallback(async () => {
     try {
@@ -962,6 +977,27 @@ function ConnectionsTab({ toast, onCountChange }) {
 
   return (
     <div className="max-w-4xl">
+     
+    <div className="mb-5">
+      <header className='mb-8'>
+        <h3 className="text-2xl font-black text-slate-800">Connected Students</h3>
+        <p className="text-slate-500 font-bold">Students who are connected with you.</p>
+      </header>
+
+      {students.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {students.map(student => (
+            <StudentCard key={student.student_id} student={student} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
+          <Users size={48} className="mx-auto text-slate-200 mb-4" />
+          <p className="text-slate-400 font-bold">No active connections found.</p>
+        </div>
+      )}
+    </div>
+
       <div className="mb-8">
         <h3 className="text-2xl font-black text-slate-800">Incoming Connections</h3>
         <p className="text-slate-500 font-bold">Students who want to connect with you — review their profile before accepting</p>
