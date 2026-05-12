@@ -36,6 +36,9 @@ export const mentorshipApi = {
   getStudentProfile: (studentId) => apiClient.get(`/api/v1/mentors/students/${studentId}/profile`),
   acceptConnectionRequest: (requestId) => apiClient.patch(`/api/v1/connections/${requestId}/accept`, {}),
   rejectConnectionRequest: (requestId) => apiClient.patch(`/api/v1/connections/${requestId}/reject`, {}),
+  getConnectedStudents: async () => {
+    return apiClient.get("/api/v1/mentors/students/connected");
+  },
 
   // ── FEEDBACK ─────────────────────────────────────────────────────────────
   submitMentorFeedback: ({ session_id, notes = "", action_items = "" }) =>
