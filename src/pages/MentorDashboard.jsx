@@ -906,26 +906,26 @@ function DirectMessagesTab({ toast }) {
 
 // ── CONNECTIONS TAB ───────────────────────────────────────────────────────────
 
-function ConnectionsTab({ toast, onCountChange }) {
+function ConnectionsTab({ toast, onCountChange, setActiveTab }) {
   const [requests,    setRequests]   = useState([]);
   const [loading,     setLoading]    = useState(true);
   const [actionId,    setActionId]   = useState(null);
   const [viewProfile, setViewProfile] = useState(null); // { studentId, data }
   const [profileLoading, setProfileLoading] = useState(false);
-  const [students, setStudents] = useState([])
+  const [students, setStudents] = useState([]);
 
   useEffect(() => {
     const fetchStudents = async () => {
-      try{
+      try {
         const data = await mentorshipApi.getConnectedStudents();
-        setStudents(data);
-      } catch(err){
+        setStudents(data || []);
+      } catch(err) {
         console.error("Failed to load students", err);
       }
     };
+    
     fetchStudents();
-    console.log("student, ", students)
-  }, [students.length])
+  }, []);
 
   const fetchRequests = useCallback(async () => {
     try {
@@ -967,36 +967,39 @@ function ConnectionsTab({ toast, onCountChange }) {
     finally { setProfileLoading(false); }
   };
 
-  const scoreValue = (obj, keys) => {
-    if (!obj) return '—';
-    for (const k of keys) {
-      if (obj[k] !== undefined) return obj[k];
-    }
-    return '—';
-  };
-
   return (
     <div className="max-w-4xl">
      
-    <div className="mb-5">
-      <header className='mb-8'>
-        <h3 className="text-2xl font-black text-slate-800">Connected Students</h3>
-        <p className="text-slate-500 font-bold">Students who are connected with you.</p>
-      </header>
+      <div className="mb-5">
+        <header className='mb-8'>
+          <h3 className="text-2xl font-black text-slate-800">Connected Students</h3>
+          <p className="text-slate-500 font-bold">Students who are connected with you.</p>
+        </header>
 
-      {students.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {students.map(student => (
-            <StudentCard key={student.student_id} student={student} />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
-          <Users size={48} className="mx-auto text-slate-200 mb-4" />
-          <p className="text-slate-400 font-bold">No active connections found.</p>
-        </div>
-      )}
-    </div>
+        {students.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {students.map(student => (
+              <StudentCard 
+                key={student.student_id} 
+                student={student} 
+                onChatClick={() => {
+                  // Switch to the messages tab
+                  setActiveTab('messages');
+                }}
+                onViewProfile={(studentId) => {
+                  // Re-use your existing profile fetching logic
+                  handleViewProfile(studentId);
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
+            <Users size={48} className="mx-auto text-slate-200 mb-4" />
+            <p className="text-slate-400 font-bold">No active connections found.</p>
+          </div>
+        )}
+      </div>
 
       <div className="mb-8">
         <h3 className="text-2xl font-black text-slate-800">Incoming Connections</h3>
@@ -1160,7 +1163,6 @@ function ConnectionsTab({ toast, onCountChange }) {
     </div>
   );
 }
-
 // ── PROFILE TAB ───────────────────────────────────────────────────────────────
 
 function ProfileTab({ profileData, onProfileCreated, toast }) {
@@ -1386,8 +1388,7 @@ export default function MentorDashboard() {
             {activeTab === 'overview'    && <OverviewTab profileData={profileData} connectionCount={connectionCount} onTabChange={setActiveTab} />}
             {activeTab === 'sessions'    && <SessionsTab toast={showToast} profileData={profileData} />}
             {activeTab === 'messages'    && <DirectMessagesTab toast={showToast} />}
-            {activeTab === 'connections' && <ConnectionsTab toast={showToast} onCountChange={setConnectionCount} />}
-            {activeTab === 'profile'     && <ProfileTab profileData={profileData} onProfileCreated={handleProfileSaved} toast={showToast} />}
+{activeTab === 'connections' && <ConnectionsTab toast={showToast} onCountChange={setConnectionCount} setActiveTab={setActiveTab} />}            {activeTab === 'profile'     && <ProfileTab profileData={profileData} onProfileCreated={handleProfileSaved} toast={showToast} />}
             {activeTab === 'feedback'    && <FeedbackTab toast={showToast} />}
           </motion.div>
         </AnimatePresence>
